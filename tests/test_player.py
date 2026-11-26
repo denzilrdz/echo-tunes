@@ -445,6 +445,9 @@ def test_manifest_and_service_worker_follow_the_settings(skill: Skill, tmp_path:
     assert any(i.get("purpose") == "maskable" for i in m.json()["icons"])
     sw = c.get("/sw.js")
     assert sw.status_code == 200 and "javascript" in sw.headers["content-type"]
+    # Audit: any page navigation was cached as the app shell, /api/* and /metrics included.
+    assert 'const PAGES = ["/", "/login"]' in sw.text and "PAGES.includes(url.pathname)" in sw.text
+    assert "echo-tunes-shell-v2" not in sw.text  # a new cache name drops what v2 stored
     assert c.get("/app-icon.png").status_code == 404
     for icon in ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"):
         assert c.get(f"/static/{icon}").status_code == 200

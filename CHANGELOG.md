@@ -30,6 +30,9 @@ All notable changes to this project are documented here. The format follows
   session: *Sign out* really ends it (a copied cookie stops working), and lowering
   `ECHO_TUNES_DASHBOARD_SESSION_DAYS` shortens sessions already signed in.
 - Password checks take the same time whatever the length of the password tried.
+- The installed app's offline cache only keeps the dashboard page, the sign-in page and its
+  own files. Opening an API address or `/metrics` as a page could store your history in the
+  browser's cache; the old cache is deleted on the next visit.
 
 ### Fixed
 
