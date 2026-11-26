@@ -11,6 +11,7 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/denzilrdz/echo-tunes/badge)](https://scorecard.dev/viewer/?uri=github.com/denzilrdz/echo-tunes)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+[**Try the dashboard demo**](https://denzilrdz.github.io/echo-tunes/) ·
 [Quick start](#quick-start) ·
 [Setup guide](docs/SETUP.md) ·
 [Public HTTPS options](docs/PUBLIC_HTTPS.md) ·
@@ -41,7 +42,7 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 | **Runs anywhere**      | Home server behind a tunnel (Tailscale Funnel, Cloudflare Tunnel) or any server with a public IP. Ready examples. |
 | **Secure by default**  | Every request's Amazon signature and your skill ID are checked; audio links are signed and expire.                |
 | **Flat memory**        | Bounded caches, streamed audio and recycled worker processes: memory doesn't creep up over weeks of uptime.       |
-| **Private dashboard**  | Now playing and up next per Echo, 15-day play history, stats, a setup checklist and a "test play" button. |
+| **Private dashboard**  | Now playing and up next per Echo, 15-day play history, stats, a setup checklist and a "test play" button. [Demo](https://denzilrdz.github.io/echo-tunes/) |
 | **Bring your own monitoring** | Prometheus `/metrics`, a JSON health check for Uptime Kuma, and a JSON API for Home Assistant.            |
 | **Self-checking**      | `echo-tunes doctor` checks configuration, YouTube access and your public address in one go.                      |
 | **Kept up to date**    | A daily job picks up new yt-dlp releases, so YouTube changes are fixed quickly.                                  |
