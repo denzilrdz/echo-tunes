@@ -34,7 +34,9 @@ uv run python scripts/build_voice_model.py    # skill-package voice models, all 
 src/echo_tunes/
   app.py            public app + build_services() (the composition root)
   dashboard.py      private app: API, player routes, PWA manifest + /sw.js, CSP, Host
-                    allowlist, Basic auth; actions = POST JSON, same-origin, password set
+                    allowlist, sign-in/Basic/Bearer auth, 256 KB body cap; actions = POST
+                    JSON, same-origin, password set
+  sessions.py       dashboard sign-in sessions (session.key + sessions.json, bounded)
   alexa/            verify.py (request signatures), skill.py (intents + AudioPlayer events),
                     responses.py (directive builders)
   music/            catalog.py (ytmusicapi), browse.py (validated items for the player),
@@ -112,7 +114,12 @@ events (skill `testing`). `uv run pytest` must pass before every commit; CI also
   through `window.ECHO_TUNES_DEMO`. Classic scripts share one global scope: keep `player.js`
   inside its IIFE (a duplicate top-level `const` breaks the whole file).
 - **The player can't control an Echo directly**: picks are applied in the reply to the Echo's
-  next event (`PlayerState.pending`, `Skill._pending_jump`). See skill `alexa-playback`.
+  next event (`PlayerState.pending`, `Skill._pending_jump`), and `PlayerState.enqueued` tracks
+  the song the Echo has already lined up. See skill `alexa-playback`.
+- **Never block the event loop on I/O in `/alexa`**: `AlexaVerifier.verify_async` checks a
+  cached certificate inline (CPU only) and sends every download to its bounded pool.
+- **`scripts/check-private-info.sh` reads `.private-ids`** (untracked): put your own device-ID
+  tails and host names there.
 - **PWAs install only over HTTPS** (or localhost); the service worker is served from `/sw.js`
   so its scope is the whole dashboard, and never caches `/api`.
 - **Amazon's certificate file names vary**: only the `/echo.api/` folder rule is Amazon's.
