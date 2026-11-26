@@ -114,6 +114,9 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             cut_stream=relay.slots.cut,
             experimental_skip=settings.experimental_skip,
             location=settings.location,
+            app_name=settings.app_name,
+            app_color=settings.app_color,
+            app_icon=settings.app_icon,
         ),
     )
     return services, [resolver, store, history, client, probe_client, services.verifier, catalog]

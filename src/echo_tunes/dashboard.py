@@ -15,16 +15,18 @@ from __future__ import annotations
 import asyncio
 import base64
 import hmac
+import html
 import ipaddress
 import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from importlib import resources
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic import Field as PydField
@@ -75,6 +77,10 @@ class DashboardDeps:
     cut_stream: Callable[[str], int] | None = None  # "skip now": cut a song's open streams
     experimental_skip: bool = False
     location: str = ""
+    # Installable app (PWA): name, colour and an optional icon of your own.
+    app_name: str = "echo-tunes"
+    app_color: str = "#1f6feb"
+    app_icon: Path | None = None
 
 
 def host_allowed(host_header: str, extra: frozenset[str]) -> bool:
@@ -208,11 +214,75 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     setup_cache: dict[str, Any] = {"at": 0.0, "result": None}
     setup_lock = asyncio.Lock()
     web = resources.files("echo_tunes") / "web"
-    index_html = (web / "index.html").read_text(encoding="utf-8")
+    name = html.escape(deps.app_name)
+    index_html = (
+        (web / "index.html")
+        .read_text(encoding="utf-8")
+        .replace("<title>echo-tunes</title>", f"<title>{name}</title>")
+        .replace("<span>echo-tunes</span>", f"<span>{name}</span>")
+        .replace(
+            'content="#0d1117" data-theme-color', f'content="{deps.app_color}" data-theme-color'
+        )
+    )
+    sw_js = (web / "sw.js").read_text(encoding="utf-8")
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         return index_html
+
+    @app.get("/manifest.webmanifest")
+    async def manifest() -> JSONResponse:
+        if deps.app_icon:
+            icons = [
+                {
+                    "src": "/app-icon.png",
+                    "sizes": "any",
+                    "type": "image/png",
+                    "purpose": "any maskable",
+                }
+            ]
+        else:
+            icons = [
+                {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                {
+                    "src": "/static/icon-maskable-512.png",
+                    "sizes": "512x512",
+                    "type": "image/png",
+                    "purpose": "maskable",
+                },
+            ]
+        return JSONResponse(
+            {
+                "name": deps.app_name,
+                "short_name": deps.app_name[:12],
+                "description": "YouTube Music in your browser or on your Echo.",
+                "id": "/",
+                "start_url": "/#play",
+                "scope": "/",
+                "display": "standalone",
+                "background_color": "#0d1117",
+                "theme_color": deps.app_color,
+                "icons": icons,
+                "shortcuts": [
+                    {"name": "Player", "url": "/#play"},
+                    {"name": "Now playing", "url": "/#now"},
+                    {"name": "History", "url": "/#history"},
+                ],
+            },
+            media_type="application/manifest+json",
+        )
+
+    @app.get("/sw.js")
+    async def service_worker() -> Response:
+        # Served from the root so it may control the whole dashboard.
+        return Response(sw_js, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/app-icon.png")
+    async def app_icon() -> Response:
+        if not deps.app_icon:
+            return Response(status_code=404)
+        return FileResponse(deps.app_icon, media_type="image/png")
 
     app.mount("/static", StaticFiles(directory=str(web)), name="static")
 
@@ -373,7 +443,8 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
             if device == BROWSER_DEVICE:
                 continue
             entry = _now_entry(device, st, updated, deps.device_names)
-            echos.append({k: entry[k] for k in ("id", "name", "playing", "current", "updated")})
+            keys = ("id", "name", "playing", "current", "updated", "position_ms")
+            echos.append({k: entry[k] for k in keys})
         echos.sort(key=lambda e: (not e["playing"], -e["updated"]))
         return {
             "actions": bool(deps.password) and deps.skill is not None,

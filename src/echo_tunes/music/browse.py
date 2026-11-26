@@ -63,7 +63,12 @@ def image(thumbnails: list[dict[str, Any]] | None, prefer: int = 300) -> str | N
     if not good:
         return None
     good.sort()
-    return next((u for w, u in good if w >= prefer), good[-1][1])
+    url = next((u for w, u in good if w >= prefer), good[-1][1])
+    # Google's image URLs carry the size: ask for a sharper one instead of upscaling 120 px.
+    return _SIZED.sub(f"=w{prefer}-h{prefer}", url) if "googleusercontent" in url else url
+
+
+_SIZED = re.compile(r"=w\d{2,4}-h\d{2,4}")
 
 
 def _artists(item: dict[str, Any]) -> str:

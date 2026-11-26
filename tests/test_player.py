@@ -276,3 +276,27 @@ def test_queue_insert_keeps_the_current_song() -> None:
     assert s.current == song(2)
     s.insert([song(9)], at_end=True, max_len=5)
     assert len(s.tracks) == 5 and s.current == song(2) and s.tracks[-1] == song(9)
+
+
+# --- installable app (PWA) -----------------------------------------------------------------
+def test_manifest_and_service_worker_follow_the_settings(skill: Skill, tmp_path: Any) -> None:
+    c = client(skill, password=None)
+    m = c.get("/manifest.webmanifest")
+    assert m.headers["content-type"].startswith("application/manifest+json")
+    assert m.json()["name"] == "echo-tunes" and m.json()["display"] == "standalone"
+    assert any(i.get("purpose") == "maskable" for i in m.json()["icons"])
+    sw = c.get("/sw.js")
+    assert sw.status_code == 200 and "javascript" in sw.headers["content-type"]
+    assert c.get("/app-icon.png").status_code == 404
+    for icon in ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"):
+        assert c.get(f"/static/{icon}").status_code == 200
+
+    png = tmp_path / "mine.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 32)
+    c = client(skill, password=None, app_name="Our <Music>", app_color="#aa3300", app_icon=png)
+    m = c.get("/manifest.webmanifest").json()
+    assert m["name"] == "Our <Music>" and m["theme_color"] == "#aa3300"
+    assert m["icons"][0]["src"] == "/app-icon.png"
+    assert c.get("/app-icon.png").content.startswith(b"\x89PNG")
+    page = c.get("/").text
+    assert "<title>Our &lt;Music&gt;</title>" in page and '"#aa3300" data-theme-color' in page

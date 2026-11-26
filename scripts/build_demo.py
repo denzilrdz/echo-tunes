@@ -46,7 +46,7 @@ def build(out: Path) -> None:
     if out.exists():
         shutil.rmtree(out)
     demo.mkdir(parents=True)
-    for name in ("app.js", "app.css", "icon.svg"):
+    for name in ("app.js", "player.js", "app.css", "icon.svg", "apple-touch-icon.png"):
         shutil.copy(WEB / name, demo / name)
     shutil.copy(ROOT / "demo" / "demo.js", demo / "demo.js")
     (demo / "app.css").write_text((demo / "app.css").read_text() + CSS)
@@ -60,8 +60,10 @@ def build(out: Path) -> None:
         "<title>echo-tunes</title>", "<title>echo-tunes dashboard demo</title>\n  " + DEMO_HEAD
     )
     html = html.replace('<meta name="robots" content="noindex">\n', "")
+    # The installable-app manifest and service worker belong to a real server, not the demo.
+    html = html.replace('  <link rel="manifest" href="/manifest.webmanifest">\n', "")
     html = html.replace("<body>\n", "<body>\n  " + BANNER + "\n", 1)
-    for needed in ('src="demo.js"', "demo-banner", 'href="app.css"'):
+    for needed in ('src="demo.js"', "demo-banner", 'href="app.css"', 'src="player.js"'):
         if needed not in html:
             raise SystemExit(f"demo build: {needed!r} missing; did index.html change?")
     (demo / "index.html").write_text(html)
