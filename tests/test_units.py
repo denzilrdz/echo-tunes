@@ -102,6 +102,7 @@ def test_store_round_trip_and_device_limit() -> None:
     assert store.count() == 3
     assert store.get("device-9").tracks[0].video_id == "vid00000001"
     assert store.get("device-0").tracks == []  # evicted, starts fresh
+    store.close()
 
 
 def test_stream_tokens_accept_only_the_canonical_signature() -> None:

@@ -68,10 +68,16 @@ async def test_queue_end_tops_up_with_radio(skill: Skill) -> None:
 
 
 async def test_next_previous_and_buttons(skill: Skill) -> None:
-    await start(skill)
+    resp = await start(skill)
+    await skill.handle(
+        event("AudioPlayer.PlaybackStarted", directives(resp)[0]["audioItem"]["stream"]["token"])
+    )
     resp = await skill.handle(intent("AMAZON.NextIntent"))
     assert skill.store.get(DEVICE).index == 1
     assert directives(resp)[0]["playBehavior"] == "REPLACE_ALL"
+    await skill.handle(
+        event("AudioPlayer.PlaybackStarted", directives(resp)[0]["audioItem"]["stream"]["token"])
+    )
     await skill.handle(envelope({"type": "PlaybackController.PreviousCommandIssued"}))
     assert skill.store.get(DEVICE).index == 0
     resp = await skill.handle(envelope({"type": "PlaybackController.NextCommandIssued"}))
@@ -203,6 +209,7 @@ async def test_loop_with_one_song_uses_a_new_token(skill: Skill) -> None:
     skill.catalog.radio = _no_radio  # type: ignore[method-assign]
     resp = await start(skill)
     tok = directives(resp)[0]["audioItem"]["stream"]["token"]
+    await skill.handle(event("AudioPlayer.PlaybackStarted", tok))
     await skill.handle(intent("AMAZON.LoopOnIntent"))
     resp = await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", tok))
     [play] = directives(resp)
