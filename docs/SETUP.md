@@ -21,12 +21,12 @@ folder in [`examples/`](../examples) and a walkthrough in [PUBLIC_HTTPS.md](PUBL
 
 | Your situation                                   | Use                                                                             | You get                                   |
 | ------------------------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------------- |
-| Home server, already use Tailscale               | [Tailscale Funnel](PUBLIC_HTTPS.md#tailscale-funnel)                            | `https://echo-tunes.<tailnet>.ts.net`     |
-| Home server, have a domain on Cloudflare         | [Cloudflare Tunnel](PUBLIC_HTTPS.md#cloudflare-tunnel)                          | `https://music.yourdomain.com`            |
 | Cloud server (VPS, AWS EC2, ...) with a public IP | [Caddy](PUBLIC_HTTPS.md#caddy-on-a-server-with-a-public-ip)                    | `https://music.yourdomain.com`            |
+| Home server, have a domain on Cloudflare         | [Cloudflare Tunnel](PUBLIC_HTTPS.md#cloudflare-tunnel)                          | `https://music.yourdomain.com`            |
+| Home server, already use Tailscale               | [Tailscale Funnel](PUBLIC_HTTPS.md#tailscale-funnel)                            | `https://echo-tunes.<tailnet>.ts.net`     |
 | You already run nginx, Traefik or Caddy          | [Your own reverse proxy](PUBLIC_HTTPS.md#your-own-reverse-proxy)                | whatever you choose                       |
 
-Write down the address, e.g. `https://echo-tunes.your-tailnet.ts.net`. This is your **public address**.
+Write down the address, e.g. `https://music.example.com` or `https://echo-tunes.<tailnet>.ts.net`. This is your **public address**.
 
 ## 2. Start echo-tunes
 
@@ -39,7 +39,7 @@ cp .env.example .env
 Edit `.env` and set your public address. Leave the skill ID as it is for now:
 
 ```bash
-ECHO_TUNES_PUBLIC_URL=https://echo-tunes.your-tailnet.ts.net
+ECHO_TUNES_PUBLIC_URL=https://music.example.com
 ECHO_TUNES_SKILL_IDS=amzn1.ask.skill.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ECHO_TUNES_LOCATION=IN   # your country, for better search results
 ```
@@ -48,7 +48,7 @@ Start it and check the address works from outside:
 
 ```bash
 docker compose up -d
-curl https://echo-tunes.your-tailnet.ts.net/healthz
+curl https://music.example.com/healthz
 # {"status":"ok","version":"0.1.0","memory_mb":74.2}
 ```
 
@@ -90,7 +90,7 @@ with **the same Amazon account your Echo uses** (creating a developer account is
 ```bash
 npm install -g ask-cli
 ask configure                     # sign in to your Amazon developer account
-sed -i 's#https://YOUR-PUBLIC-URL#https://echo-tunes.your-tailnet.ts.net#' skill-package/skill.json
+sed -i 's#https://YOUR-PUBLIC-URL#https://music.example.com#' skill-package/skill.json
 ask deploy                        # creates the skill from skill-package/
 ```
 
@@ -113,13 +113,13 @@ docker compose exec echo-tunes echo-tunes doctor
 ```
 
 ```text
-  ✓ Configuration: public URL https://echo-tunes.your-tailnet.ts.net, 1 skill ID(s)
+  ✓ Configuration: public URL https://music.example.com, 1 skill ID(s)
   ✓ Data folder is writable: /data
   ✓ Deno (needed by yt-dlp for YouTube): deno 2.9.8
   ✓ yt-dlp: 2026.11.23
   ✓ YouTube Music search: Never Gonna Give You Up by Rick Astley
   ✓ Audio download from YouTube: 206 after 3.1s
-  ✓ Public URL reaches this server: https://echo-tunes.your-tailnet.ts.net/healthz answered 200
+  ✓ Public URL reaches this server: https://music.example.com/healthz answered 200
 
 All good.
 ```

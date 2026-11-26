@@ -18,7 +18,7 @@ body:
     id: hosting
     attributes:
       label: How is it reachable from the internet?
-      options: [Tailscale Funnel, Cloudflare Tunnel, Caddy on a public server, Own reverse proxy, Other]
+      options: [Caddy on a public server, Cloudflare Tunnel, Tailscale Funnel, Own reverse proxy, Other]
     validations:
       required: true
   - type: input

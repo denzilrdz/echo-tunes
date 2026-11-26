@@ -46,7 +46,7 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 | **Your own music**     | Optional Google sign-in: "play my liked songs", your playlists, your mixes, "like this song".         |
 | **Endless radio**      | Every song starts a YouTube Music radio, and the queue tops itself up so the music doesn't stop.                  |
 | **Fast song changes**  | The next song's audio is prepared while the current one plays.                                                   |
-| **Runs anywhere**      | Home server behind a tunnel (Tailscale Funnel, Cloudflare Tunnel) or any server with a public IP. Ready examples. |
+| **Runs anywhere**      | Any Docker host: a cloud server with a public IP, or a home server behind a tunnel. No vendor lock-in; ready examples for Caddy, Cloudflare Tunnel and Tailscale Funnel. |
 | **Secure by default**  | Every request's Amazon signature and your skill ID are checked; audio links are signed and expire.                |
 | **Flat memory**        | Bounded caches, streamed audio and recycled worker processes: memory doesn't creep up over weeks of uptime.       |
 | **Private dashboard**  | Now playing and up next per Echo, 15-day play history, stats, a setup checklist and a "test play" button. [Demo](https://denzilrdz.github.io/echo-tunes/) |
@@ -99,17 +99,28 @@ read in an afternoon, set up in about 15 minutes, and then forget about.
 
 The full walkthrough is in **[docs/SETUP.md](docs/SETUP.md)**. In short:
 
-**1. Run echo-tunes** behind HTTPS. For example, on a home server with Tailscale:
+**1. Run echo-tunes** on any always-on machine (home server, Raspberry Pi, VPS, AWS EC2...):
 
 ```bash
 mkdir echo-tunes && cd echo-tunes
 base=https://raw.githubusercontent.com/denzilrdz/echo-tunes/main
-curl -fsSLO $base/examples/tailscale-funnel/compose.yaml
-curl -fsSLO $base/examples/tailscale-funnel/serve.json
+curl -fsSLO $base/compose.yaml
 curl -fsSL $base/.env.example -o .env
-# edit .env: ECHO_TUNES_PUBLIC_URL (and the skill ID after step 2); add TS_AUTHKEY=...
+# edit .env: ECHO_TUNES_PUBLIC_URL (and the skill ID after step 2)
 docker compose up -d
 ```
+
+Then give it a public HTTPS address. Alexa only needs `https://<your-address>/alexa` with a
+trusted certificate; pick whichever fits ([details](docs/PUBLIC_HTTPS.md)):
+
+| Your server | Ready-made setup | Open ports? |
+| --- | --- | --- |
+| Cloud server with a public IP (VPS, EC2...) | [Caddy](examples/caddy) (automatic Let's Encrypt) | 80, 443 |
+| Home server, domain on Cloudflare | [Cloudflare Tunnel](examples/cloudflare-tunnel) | None |
+| Home server, uses Tailscale | [Tailscale Funnel](examples/tailscale-funnel) | None |
+| Already run nginx, Traefik or Caddy | Proxy your HTTPS site to `127.0.0.1:8080` | Yours |
+
+Each example folder replaces `compose.yaml` above with one that includes the HTTPS part.
 
 **2. Create your private skill** in the [Alexa developer console](https://developer.amazon.com/alexa/console/ask):
 *Create skill* → name **echo tunes** → *Music & Audio* → *Custom* model → *Provision your own* hosting.
@@ -135,9 +146,9 @@ docker compose exec -it echo-tunes echo-tunes login
 
 See [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
 
-**6. Open the dashboard** on the private port (`http://<server>:8081`, or tailnet-only
-`https://echo-tunes.<tailnet>.ts.net:8443` with the Funnel example): what's playing, history,
-stats, and a setup checklist with a *Test play* button. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
+**6. Open the dashboard** on the private port, `http://localhost:8081` on the server (or over
+an SSH tunnel, your LAN or a VPN; never the internet): what's playing, history, stats, and a
+setup checklist with a *Test play* button. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
 
 ## How it works
 

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The README quick start, setup guide and landing page no longer lead with Tailscale: they start
+  from the plain `compose.yaml` and offer Caddy (cloud server), Cloudflare Tunnel, Tailscale
+  Funnel or your own reverse proxy as equal choices. Example addresses use `music.example.com`.
+
 ## [0.2.1] - 2026-11-26
 
 ### Added
