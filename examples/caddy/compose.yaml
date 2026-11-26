@@ -1,0 +1,29 @@
+# A server with a public IP (a VPS, AWS EC2, Lightsail, Hetzner, ...) and a domain name
+# pointing at it. Caddy gets and renews a free HTTPS certificate on its own.
+# Setup: docs/PUBLIC_HTTPS.md#caddy-on-a-server-with-a-public-ip
+services:
+  caddy:
+    image: caddy:2.11.9-alpine
+    container_name: echo-tunes-caddy
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}             # e.g. music.example.com
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+    depends_on: [echo-tunes]
+
+  echo-tunes:
+    image: ghcr.io/denzilrdz/echo-tunes:0.1.0
+    container_name: echo-tunes
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 256

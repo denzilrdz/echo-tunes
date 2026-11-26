@@ -1,0 +1,6 @@
+{$DOMAIN} {
+	encode zstd gzip {
+		match header Content-Type application/json*
+	}
+	reverse_proxy echo-tunes:8080
+}

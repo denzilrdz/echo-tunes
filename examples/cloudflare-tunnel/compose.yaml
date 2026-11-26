@@ -1,0 +1,25 @@
+# Home server, no open ports: a Cloudflare Tunnel gives echo-tunes a public HTTPS address on
+# your own domain (managed by Cloudflare). Setup: docs/PUBLIC_HTTPS.md#cloudflare-tunnel
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2026.11.0
+    container_name: echo-tunes-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN} # from Cloudflare Zero Trust > Networks > Tunnels
+    depends_on: [echo-tunes]
+
+  echo-tunes:
+    image: ghcr.io/denzilrdz/echo-tunes:0.1.0
+    container_name: echo-tunes
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 256
