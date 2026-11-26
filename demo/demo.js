@@ -38,6 +38,7 @@
       return `data:image/svg+xml,${encodeURIComponent(svg)}`;
     };
     document.documentElement.classList.add("shots");
+    window.ECHO_TUNES_DEMO_AUTOPLAY = SONGS.slice(0, 6).map((s) => ({ ...s }));
   }
   const DEVICES = [{ id: "DEMO0LIVING1", name: "Living room" }, { id: "DEMO0KITCHEN", name: "Kitchen" }];
   const SHOTS = new URLSearchParams(location.search).has("shots");

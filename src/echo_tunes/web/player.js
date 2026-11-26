@@ -439,7 +439,11 @@ async function playerRefresh() {
   } catch { return; }
   $("#history-clear").hidden = !P.info.actions;
   renderTargets();
-  if (!P.view) setView({ type: "home" });
+  if (!P.view) {
+    setView({ type: "home" });
+    // Screenshot mode of the public demo: start a made-up song so the player bar shows.
+    if (DEMO && Array.isArray(window.ECHO_TUNES_DEMO_AUTOPLAY)) playItems(window.ECHO_TUNES_DEMO_AUTOPLAY, "Quick picks");
+  }
   for (const b of document.querySelectorAll("[data-action], .mini")) b.disabled = !P.info.actions;
 }
 window.playerRefresh = playerRefresh; // app.js calls it on every refresh

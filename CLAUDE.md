@@ -6,8 +6,8 @@ Python 3.13+ process (FastAPI + uvicorn) in one Docker image, with two ports:
 - **public 8080**: `POST /alexa` (Amazon-signed requests), `GET /stream/<token>.m4a` (audio
   relay), `/healthz`, `/`. Something else (Caddy, Cloudflare Tunnel, Tailscale Funnel, any
   proxy) puts HTTPS in front of it. Nothing in the code may assume a particular host or tunnel.
-- **private 8081**: the dashboard (`src/echo_tunes/web/`), its JSON API and `/metrics`. Never
-  published to the internet.
+- **private 8081**: the dashboard and web player (`src/echo_tunes/web/`, an installable PWA),
+  its JSON API and `/metrics`. Never published to the internet.
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing playback, streaming or
 memory handling. User docs: README.md and docs/.
@@ -33,17 +33,20 @@ uv run python scripts/build_voice_model.py    # skill-package voice models, all 
 ```
 src/echo_tunes/
   app.py            public app + build_services() (the composition root)
-  dashboard.py      private app: API, CSP, Host allowlist, optional Basic auth
+  dashboard.py      private app: API, player routes, PWA manifest + /sw.js, CSP, Host
+                    allowlist, Basic auth; actions = POST JSON, same-origin, password set
   alexa/            verify.py (request signatures), skill.py (intents + AudioPlayer events),
                     responses.py (directive builders)
-  music/            catalog.py (ytmusicapi), resolver.py (yt-dlp in worker processes),
+  music/            catalog.py (ytmusicapi), browse.py (validated items for the player),
+                    resolver.py (yt-dlp in worker processes),
                     extract.py (runs inside a worker), account.py (Google sign-in)
   player/           state.py (queue, tokens, shuffle), store.py (SQLite, per Echo)
   stream.py         audio relay: ranges, warm-up 403s, slots, write timeout
   history.py        play history (SQLite, retention), stats
   metrics.py        Prometheus registry (fixed label values only)
   checks.py         setup checks shared by `doctor` and the dashboard
-  web/              dashboard HTML/CSS/JS (no build step, no inline script)
+  web/              dashboard HTML/CSS, app.js (tabs) + player.js (player, own scope),
+                    sw.js, icons (no build step, no framework, no inline script)
 tests/              pytest; fakes in conftest.py; property, state-machine and memory tests
 fuzz/               Atheris fuzzers (Linux), weekly in CI
 demo/ scripts/      Pages site, screenshots, voice model
@@ -106,7 +109,15 @@ events (skill `testing`). `uv run pytest` must pass before every commit; CI also
 - **uvicorn's signal handler re-raises** after shutdown; `cli.serve()` installs its own.
 - **The invocation name is "my tunes"**: Amazon rejects names containing a wake word ("echo").
 - **Dashboard pages follow a strict CSP** (no inline scripts or styles); the demo injects data
-  through `window.ECHO_TUNES_DEMO`.
+  through `window.ECHO_TUNES_DEMO`. Classic scripts share one global scope: keep `player.js`
+  inside its IIFE (a duplicate top-level `const` breaks the whole file).
+- **The player can't control an Echo directly**: picks are applied in the reply to the Echo's
+  next event (`PlayerState.pending`, `Skill._pending_jump`). See skill `alexa-playback`.
+- **PWAs install only over HTTPS** (or localhost); the service worker is served from `/sw.js`
+  so its scope is the whole dashboard, and never caches `/api`.
+- **Amazon's certificate file names vary**: only the `/echo.api/` folder rule is Amazon's.
+  0.2.1-0.2.2 refused every real request with a stricter pattern; test changes to
+  `alexa/verify.py` in the developer console's simulator before releasing (skill `release`).
 - **Headless Chrome ignores `prefers-color-scheme`** for screenshots: `scripts/screenshots.py`
   makes themed CSS copies.
 

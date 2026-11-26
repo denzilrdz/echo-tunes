@@ -3,7 +3,8 @@
 # echo-tunes
 
 **YouTube Music on your Echo, from your own server.**
-A private Alexa skill you host yourself: one Docker container, no AWS account, no Amazon password.
+A private Alexa skill and web player you host yourself: one Docker container, no AWS account,
+no Amazon password.
 
 [![ci](https://github.com/denzilrdz/echo-tunes/actions/workflows/ci.yml/badge.svg)](https://github.com/denzilrdz/echo-tunes/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/denzilrdz/echo-tunes?include_prereleases&sort=semver)](https://github.com/denzilrdz/echo-tunes/releases)
@@ -29,13 +30,23 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 > **"Alexa, ask my tunes to play Blinding Lights."**
 > Your Echo plays the song, then keeps going with a radio of similar songs. Next, previous,
 > pause, resume, shuffle and loop all work by voice, and from the buttons in the Alexa app.
+>
+> **Or pick it yourself:** search and browse YouTube Music in the web player, play it in your
+> browser, or line it up on any Echo. Add it to your phone's home screen and it's an app.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/dashboard-dark.png" />
-  <img src="docs/img/dashboard-light.png" alt="The echo-tunes dashboard: what each Echo is playing, why, and the songs coming up next" width="100%" />
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/player-dark.png" />
+  <img src="docs/img/player-light.png" alt="The echo-tunes web player: search, your library, quick picks and trending playlists, with the player bar at the bottom" width="100%" />
 </picture>
 
-<sub>The private dashboard ([live demo](https://denzilrdz.github.io/echo-tunes/demo/), sample data).</sub>
+<sub>The web player ([live demo](https://denzilrdz.github.io/echo-tunes/demo/), sample data and made-up songs).</sub>
+
+<table>
+  <tr>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/dashboard-dark.png" /><img src="docs/img/dashboard-light.png" alt="Now playing: what each Echo is playing and what's next" /></picture><br><sub><b>Now playing</b> on every Echo, and what's next</sub></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/stats-dark.png" /><img src="docs/img/stats-light.png" alt="Stats: plays, listening time, top songs and artists" /></picture><br><sub><b>History and stats</b>, kept on your server</sub></td>
+  </tr>
+</table>
 
 ## Highlights
 
@@ -49,7 +60,9 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 | **Runs anywhere**      | Any Docker host: a cloud server with a public IP, or a home server behind a tunnel. No vendor lock-in; ready examples for Caddy, Cloudflare Tunnel and Tailscale Funnel. |
 | **Secure by default**  | Every request's Amazon signature and your skill ID are checked; audio links are signed and expire.                |
 | **Flat memory**        | Bounded caches, streamed audio and recycled worker processes: memory doesn't creep up over weeks of uptime.       |
-| **Private dashboard**  | Now playing and up next per Echo, 15-day play history, stats, a setup checklist and a "test play" button. [Demo](https://denzilrdz.github.io/echo-tunes/) |
+| **Web player**         | Search songs, albums, artists and playlists; browse charts, moods and your library. Play in the browser or queue on an Echo. [Demo](https://denzilrdz.github.io/echo-tunes/demo/) |
+| **Phone app**          | Install the dashboard from your browser (it's a PWA): own icon, full screen, lock-screen controls. Name, colour and icon are settings. |
+| **Private dashboard**  | Now playing and up next per Echo, 15-day play history (clear it any time), stats, a setup checklist and a "test play" button. |
 | **Bring your own monitoring** | Prometheus `/metrics`, a JSON health check for Uptime Kuma, and a JSON API for Home Assistant.            |
 | **Self-checking**      | `echo-tunes doctor` checks configuration, YouTube access and your public address in one go.                      |
 | **Kept up to date**    | A daily job picks up new yt-dlp releases, so YouTube changes are fixed quickly.                                  |
@@ -146,9 +159,10 @@ docker compose exec -it echo-tunes echo-tunes login
 
 See [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
 
-**6. Open the dashboard** on the private port, `http://localhost:8081` on the server (or over
-an SSH tunnel, your LAN or a VPN; never the internet): what's playing, history, stats, and a
-setup checklist with a *Test play* button. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
+**6. Open the dashboard and player** on the private port, `http://localhost:8081` on the
+server (or over an SSH tunnel, your LAN or a VPN; never the internet). Set
+`ECHO_TUNES_DASHBOARD_PASSWORD` to play and queue songs from it, and open it over HTTPS to
+install it on your phone. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
 
 ## How it works
 
@@ -198,9 +212,13 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_DASHBOARD_PORT`            | `8081`     | Private dashboard, `/metrics` and JSON API (`0` = off). Never publish it. |
 | `ECHO_TUNES_DASHBOARD_HOST`            | `127.0.0.1` | Address the dashboard listens on (`0.0.0.0` in the Docker image, so its port can be published privately). |
 | `ECHO_TUNES_DASHBOARD_HOSTS`           | (none)     | Extra host names you open the dashboard by, comma-separated, no port (e.g. `music-dash.lan`). |
-| `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Optional password for the dashboard (user `admin`).                         |
+| `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Password for the dashboard (user `admin`); needed to play, queue and clear history from it. |
 | `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |
 | `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `BEWY4D23ORJQ=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
+| `ECHO_TUNES_EXPERIMENTAL_SKIP`         | `false`    | Let the player try to skip the song playing on an Echo ([how it works](docs/DASHBOARD.md#player)). |
+| `ECHO_TUNES_APP_NAME`                  | `echo-tunes` | Name of the installed phone app.                                          |
+| `ECHO_TUNES_APP_COLOR`                 | `#1f6feb`  | Its theme colour (`#rrggbb`).                                               |
+| `ECHO_TUNES_APP_ICON`                  | (built in) | Your own square PNG icon for it, e.g. `/data/icon.png`.                     |
 | `ECHO_TUNES_LOG_LEVEL`                 | `info`     | `debug`, `info`, `warning`, `error` or `critical`.                          |
 | `ECHO_TUNES_PORT`                      | `8080`     | Public port (Alexa and the Echo's audio).                                   |
 | `ECHO_TUNES_HOST`                      | `0.0.0.0`  | Address the public port listens on.                                         |

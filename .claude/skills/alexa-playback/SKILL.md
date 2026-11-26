@@ -51,3 +51,13 @@ entity resolutions: read them with `_slot(intent, name, resolved=True)`.
 2. Check the reply type: speech only for IntentRequest; directives allowed for the event.
 3. `uv run pytest -q tests/test_skill.py tests/test_queue_machine.py`.
 4. Test on a real Echo: the developer console's simulator doesn't play audio.
+
+## The web player and an Echo
+
+The dashboard can't push to an Echo. `Skill.dashboard_queue()` edits the queue
+(`PlayerState.insert`, songs placed after the current one or at the end) and, for *Play*, sets
+`state.pending`. The next `PlaybackNearlyFinished` enqueues it naturally; if the Echo had
+already lined up another song, the `PlaybackStarted` of that song is answered with a
+`REPLACE_ALL` of the pending one (`_pending_jump`). "Skip now" (experimental) cuts the playing
+song's open streams (`StreamSlots.cut`) and refuses new ones for 30 s, so the Echo reports
+`PlaybackFailed` and the reply plays the pending song.

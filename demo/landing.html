@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>echo-tunes: YouTube Music on your Alexa Echo, self-hosted</title>
-  <meta name="description" content="Open-source, self-hosted Alexa skill that plays YouTube Music on your Amazon Echo by voice. One Docker container, no AWS account, no Amazon password. Endless radio, your playlists, a private dashboard.">
-  <meta name="keywords" content="Alexa skill, Amazon Echo, Echo Dot, YouTube Music, self-hosted, Docker, Alexa custom skill, AudioPlayer, yt-dlp, ytmusicapi, home server, homelab, open source">
+  <title>echo-tunes: YouTube Music on your Alexa Echo and in your browser, self-hosted</title>
+  <meta name="description" content="Open-source, self-hosted Alexa skill and web player for YouTube Music. Play by voice on your Amazon Echo, or search and play in your browser and phone app. One Docker container, no AWS account, no Amazon password.">
+  <meta name="keywords" content="Alexa skill, Amazon Echo, Echo Dot, YouTube Music, web player, PWA, self-hosted, Docker, Alexa custom skill, AudioPlayer, yt-dlp, ytmusicapi, home server, homelab, open source">
   <link rel="canonical" href="https://denzilrdz.github.io/echo-tunes/">
   <link rel="icon" href="demo/icon.svg" type="image/svg+xml">
   <meta name="theme-color" content="#0d1117">
@@ -14,19 +14,19 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="echo-tunes">
   <meta property="og:title" content="echo-tunes: YouTube Music on your Echo, from your own server">
-  <meta property="og:description" content="A private, open-source Alexa skill: one Docker container, no AWS, no Amazon password. Endless radio, your playlists and a dashboard.">
+  <meta property="og:description" content="An open-source Alexa skill and web player you host yourself: one Docker container, no AWS, no Amazon password. Endless radio, your playlists, a phone app.">
   <meta property="og:url" content="https://denzilrdz.github.io/echo-tunes/">
   <meta property="og:image" content="https://denzilrdz.github.io/echo-tunes/img/social-preview.png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
-  <meta property="og:image:alt" content="echo-tunes: YouTube Music on your Echo, from your own server, with its dashboard">
+  <meta property="og:image:alt" content="echo-tunes: YouTube Music on your Echo, from your own server, with its web player">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "echo-tunes",
-    "description": "Self-hosted Alexa skill that plays YouTube Music on an Amazon Echo by voice.",
+    "description": "Self-hosted Alexa skill and web player that plays YouTube Music on an Amazon Echo by voice or in the browser.",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Linux (Docker), amd64 and arm64",
     "license": "https://opensource.org/licenses/MIT",
@@ -71,17 +71,17 @@
     <header>
       <div class="brand"><img src="demo/icon.svg" alt="" width="34" height="34"> echo-tunes</div>
       <h1>YouTube Music on your <span>Echo</span>, from your own server.</h1>
-      <p class="lead">An open-source, self-hosted Alexa skill. One Docker container, no AWS account and no Amazon password: ask for a song and it plays, then keeps going with a radio of similar music.</p>
+      <p class="lead">An open-source Alexa skill and web player you host yourself. Ask your Echo for a song and it plays, then keeps going with a radio of similar music. Or search, browse and play from your browser, or the phone app. One Docker container, no AWS account, no Amazon password.</p>
       <div class="cta">
-        <a class="btn primary" href="demo/">Try the dashboard demo</a>
+        <a class="btn primary" href="demo/">Try the player demo</a>
         <a class="btn" href="https://github.com/denzilrdz/echo-tunes#quick-start">Set it up (15 min)</a>
         <a class="btn" href="https://github.com/denzilrdz/echo-tunes">GitHub</a>
       </div>
       <p class="say">“Alexa, ask my tunes to play Blinding Lights.”</p>
       <div class="shot">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="img/dashboard-dark.png">
-          <img src="img/dashboard-light.png" alt="The echo-tunes dashboard: what each Echo is playing, with the songs coming up next" width="1280" height="720">
+          <source media="(prefers-color-scheme: dark)" srcset="img/player-dark.png">
+          <img src="img/player-light.png" alt="The echo-tunes web player: search, your library, quick picks and trending playlists, with the player bar" width="1280" height="800">
         </picture>
       </div>
     </header>
@@ -92,7 +92,9 @@
         <div class="card"><h3>Ask by voice</h3><p>Songs, artists, “play radio for …”, next, pause, shuffle, “what's playing”.</p></div>
         <div class="card"><h3>Endless radio</h3><p>Every song starts a YouTube Music radio; the queue tops itself up.</p></div>
         <div class="card"><h3>Your library</h3><p>Optional Google sign-in: liked songs, your playlists and personal mixes.</p></div>
-        <div class="card"><h3>Private dashboard</h3><p>Now playing, 15-day history, stats, a setup checklist and a test-play button.</p></div>
+        <div class="card"><h3>Web player</h3><p>Search songs, albums, artists and playlists, browse charts and moods. Play in the browser or queue on an Echo.</p></div>
+        <div class="card"><h3>Phone app</h3><p>Install it from your browser: its own icon, full screen, lock-screen controls.</p></div>
+        <div class="card"><h3>Private dashboard</h3><p>Now playing on every Echo, 15-day history, stats, a setup checklist and a test-play button.</p></div>
         <div class="card"><h3>One container</h3><p>Docker image for PCs, servers and Raspberry Pi (amd64 and arm64). Flat memory use.</p></div>
         <div class="card"><h3>Secure by default</h3><p>Every Alexa request is signature-checked; audio links are signed and expire.</p></div>
       </div>
@@ -112,6 +114,7 @@
       <details><summary>Do I need YouTube Premium?</summary><p>No. Signing in is optional and only adds your own library.</p></details>
       <details><summary>Is it in the Alexa Skill Store?</summary><p>No. Each person runs a private copy on their own Amazon developer account, which is free.</p></details>
       <details><summary>Can it run on a cloud server?</summary><p>Yes, but YouTube is stricter with data-centre addresses; a home server is the most reliable.</p></details>
+      <details><summary>Can I control the Echo from the web player?</summary><p>You can line songs up on any Echo. Alexa only lets a skill change playback when the Echo checks in, so your pick plays after the current song; pausing stays with your voice.</p></details>
     </section>
 
     <footer>
