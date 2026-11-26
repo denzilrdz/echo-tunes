@@ -3,7 +3,7 @@
 Without signing in, echo-tunes plays anything on YouTube Music and builds radios from it.
 Signing in adds **your** music:
 
-| Say "Alexa, ask echo tunes to …" | Plays |
+| Say "Alexa, ask my tunes to …" | Plays |
 | --- | --- |
 | "… play my liked songs" | Your liked songs (up to 200) |
 | "… play my playlist Road Trip" | A playlist from your library (names don't have to be exact) |

@@ -33,6 +33,15 @@ def intents(path: Path) -> dict[str, dict]:  # type: ignore[type-arg]
     return {i["name"]: i for i in lm["intents"]}
 
 
+def test_invocation_name_is_allowed() -> None:
+    """Amazon rejects wake words in the spoken name (the build fails), and wants lower case."""
+    lm = json.loads(MODELS[0].read_text())["interactionModel"]["languageModel"]
+    name = lm["invocationName"]
+    assert name == name.lower() and len(name.split()) >= 2
+    for wake in ("alexa", "amazon", "echo", "computer", "ziggy"):
+        assert wake not in name.split(), f"{wake!r} is a wake word"
+
+
 def test_all_locales_identical() -> None:
     assert len(MODELS) >= 3
     first = MODELS[0].read_text()

@@ -38,14 +38,14 @@ docker compose logs -f echo-tunes
 - **Pi-hole or another DNS blocker?** Make sure it doesn't block your public address or
   `*.googlevideo.com` for the server.
 
-## "Alexa, ask echo tunes …" isn't recognised
+## "Alexa, ask my tunes …" isn't recognised
 
 - The skill only exists in the languages you added. If your Echo is set to *English (India)*,
   the skill needs the `en-IN` model (developer console → *Language settings*).
 - Testing must be enabled: console → *Test* tab → *Development*.
 - The developer account must be the same Amazon account as the Echo (or invite the other
   account as a beta tester).
-- Try *"Alexa, open echo tunes"* first; if that works, the invocation is fine and the song
+- Try *"Alexa, open my tunes"* first; if that works, the invocation is fine and the song
   phrase wasn't understood. See [voice command tips](VOICE_COMMANDS.md#tips).
 
 ## The public address doesn't answer

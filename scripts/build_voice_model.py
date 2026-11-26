@@ -10,6 +10,9 @@ import json
 from pathlib import Path
 
 LOCALES = ["en-US", "en-GB", "en-IN", "en-CA", "en-AU"]
+# What people say: "Alexa, ask my tunes to ...". It can't contain a wake word (Alexa, Amazon,
+# Echo, Computer, Ziggy), which is why it isn't "echo tunes".
+INVOCATION = "my tunes"
 OUT = Path(__file__).resolve().parent.parent / "skill-package"
 
 QUERY = [{"name": "query", "type": "AMAZON.SearchQuery"}]
@@ -65,19 +68,19 @@ TYPES = [
 
 SUMMARY = "Play music from YouTube Music on your Echo, from your own server."
 DESCRIPTION = (
-    "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or "
+    "A private, self-hosted skill. Say: Alexa, ask my tunes to play, followed by a song or "
     "artist. Sign in on your server to play your liked songs, playlists and mixes."
 )
 EXAMPLES = [
-    "Alexa, ask echo tunes to play Blinding Lights",
-    "Alexa, ask echo tunes to play my liked songs",
-    "Alexa, ask echo tunes what's playing",
+    "Alexa, ask my tunes to play Blinding Lights",
+    "Alexa, ask my tunes to play my liked songs",
+    "Alexa, ask my tunes what's playing",
 ]
 
 
 def model() -> dict:  # type: ignore[type-arg]
     return {"interactionModel": {"languageModel": {
-        "invocationName": "echo tunes",
+        "invocationName": INVOCATION,
         "intents": INTENTS + [{"name": n, "samples": []} for n in BUILT_INS],
         "types": TYPES,
     }}}

@@ -42,6 +42,11 @@ def serve() -> None:
         level=settings.log_level.upper(),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
+    # httpx logs every request URL at INFO; YouTube's links are long, signed and contain the
+    # server's IP address, so keep them out of the logs unless debugging.
+    if settings.log_level.lower() != "debug":
+        for noisy in ("httpx", "httpcore"):
+            logging.getLogger(noisy).setLevel(logging.WARNING)
     uvicorn.run(
         create_app(settings),
         host=settings.host,

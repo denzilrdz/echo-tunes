@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "echo tunes",
+      "invocationName": "my tunes",
       "intents": [
         {
           "name": "PlayIntent",
