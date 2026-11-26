@@ -48,8 +48,12 @@ jobs:
           uv run ruff check src tests scripts
       - name: Type check
         run: uv run mypy
-      - name: Tests
+      - name: Tests (Python 3.13)
         run: uv run pytest -q
+      - name: Tests (Python 3.15, the Docker image's version)
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-315
+        run: uv run --python 3.15 pytest -q
 
   docker:
     name: docker

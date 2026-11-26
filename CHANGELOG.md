@@ -6,15 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-26
+
 ### Added
 
 - A landing page at https://denzilrdz.github.io/echo-tunes/ with search and link-preview
   metadata (description, Open Graph, structured data, sitemap), screenshots in the README and
   docs, and a social preview image. `scripts/screenshots.py` regenerates them from the demo
   with made-up songs and generated artwork (no real album art in the repo).
-
-### Added
-
+- Coverage-guided fuzzing (Atheris) of stream links, `Range` headers, Amazon certificate URLs
+  and player state, weekly and on changes (`fuzz/`, `.github/workflows/fuzz.yml`).
+- Releases carry the Python package (wheel and source), `SHA256SUMS` and signed SLSA build
+  provenance (`echo-tunes-<tag>.intoto.jsonl`), like the container image.
+- CI tests on Python 3.13 and on 3.15, the Docker image's version.
 - A public [dashboard demo](https://denzilrdz.github.io/echo-tunes/) with sample data, built
   from the real dashboard files and published to GitHub Pages.
 
@@ -38,6 +42,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The Docker image runs Python 3.15.
+- Stream links must use exactly the characters they're made of (ASCII digits, URL-safe base64)
+  before anything is decoded; Python 3.15 warns that lenient base64 decoding is going away.
 - `echo-tunes logout` keeps the saved Google OAuth client (`--forget-client` removes it too).
 - The daily yt-dlp update tests new versions without write access and only takes versions that
   are at least a day old.
@@ -108,6 +115,7 @@ First release.
 - CI: lint, type check, tests including a memory soak test, privacy check, secret scan,
   workflow audit, Docker smoke test; multi-arch release workflow; daily yt-dlp update PRs.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/denzilrdz/echo-tunes/releases/tag/v0.1.0

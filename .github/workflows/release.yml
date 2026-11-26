@@ -58,8 +58,21 @@ jobs:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
-      - name: GitHub release
+      # The Python package too, with signed build provenance, attached to the release.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Build the Python package
+        run: uv build --out-dir dist
+      - id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: "GitHub release (draft, files attached, then published: releases are immutable)"
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          cp "$BUNDLE" "dist/echo-tunes-${TAG}.intoto.jsonl"
+          (cd dist && sha256sum ./*.whl ./*.tar.gz > SHA256SUMS)
+          gh release create "$TAG" --verify-tag --generate-notes --title "$TAG" --draft dist/*
+          gh release edit "$TAG" --draft=false

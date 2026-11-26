@@ -32,6 +32,12 @@ def test_token_tampering_rejected(mutate) -> None:  # type: ignore[no-untyped-de
         tokens.check(SECRET, mutate(t), now=1030)
 
 
+@pytest.mark.parametrize("expiry", ["²³", "٣٣٣", "1e9", " 99", "-5"])
+def test_token_expiry_must_be_ascii_digits(expiry: str) -> None:
+    with pytest.raises(tokens.BadToken):
+        tokens.check(SECRET, f"dQw4w9WgXcQ.{expiry}.AAAAAAAAAAAAAAAAAAAAAA", now=0)
+
+
 def test_token_expires_and_needs_right_key() -> None:
     t = tokens.make(SECRET, "dQw4w9WgXcQ", 60, now=1000)
     with pytest.raises(tokens.BadToken, match="expired"):

@@ -11,7 +11,7 @@ services:
     depends_on: [echo-tunes]
 
   echo-tunes:
-    image: ghcr.io/denzilrdz/echo-tunes:0.2.0
+    image: ghcr.io/denzilrdz/echo-tunes:0.2.1
     container_name: echo-tunes
     restart: unless-stopped
     env_file: .env
