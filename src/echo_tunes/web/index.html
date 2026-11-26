@@ -7,8 +7,15 @@
   <meta name="robots" content="noindex">
   <title>echo-tunes</title>
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="theme-color" content="#0d1117" data-theme-color>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
+  <script src="/static/player.js" defer></script>
 </head>
 <body>
   <header class="top">
@@ -18,7 +25,8 @@
     </div>
     <div class="status" id="status" aria-live="polite"></div>
     <nav class="tabs" role="tablist" aria-label="Sections">
-      <button role="tab" data-tab="now" aria-selected="true">Now playing</button>
+      <button role="tab" data-tab="play" aria-selected="true">Player</button>
+      <button role="tab" data-tab="now" aria-selected="false">Now playing</button>
       <button role="tab" data-tab="history" aria-selected="false">History</button>
       <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
       <button role="tab" data-tab="monitor" aria-selected="false">Monitoring</button>
@@ -27,7 +35,31 @@
   </header>
 
   <main>
-    <section id="tab-now" role="tabpanel" aria-label="Now playing">
+    <section id="tab-play" role="tabpanel" aria-label="Player">
+      <div class="p-top">
+        <form id="p-search" class="p-search" role="search" autocomplete="off">
+          <span class="p-search-icon" aria-hidden="true">⌕</span>
+          <input name="q" type="search" placeholder="Search songs, albums, artists, playlists" maxlength="100" aria-label="Search YouTube Music">
+        </form>
+        <label class="p-target">Play on
+          <select id="p-target"><option value="browser">This browser</option></select>
+        </label>
+      </div>
+      <p class="notice" id="p-lock" hidden>Browsing works now. To play or queue songs from here, set a dashboard password
+        (<code>ECHO_TUNES_DASHBOARD_PASSWORD</code>) and restart echo-tunes.
+        <a href="https://github.com/denzilrdz/echo-tunes/blob/main/docs/DASHBOARD.md#player" rel="noreferrer" target="_blank">Why?</a></p>
+      <p class="notice" id="p-echo-note" hidden>Alexa lets a skill change what an Echo plays only when the Echo checks in, so songs you pick
+        play <b>after the current song</b>.</p>
+      <div class="p-kinds" id="p-kinds" role="tablist" aria-label="Result type" hidden>
+        <button type="button" data-kind="song" aria-selected="true">Songs</button>
+        <button type="button" data-kind="album" aria-selected="false">Albums</button>
+        <button type="button" data-kind="artist" aria-selected="false">Artists</button>
+        <button type="button" data-kind="playlist" aria-selected="false">Playlists</button>
+      </div>
+      <div id="p-view" aria-live="polite"></div>
+    </section>
+
+    <section id="tab-now" role="tabpanel" aria-label="Now playing" hidden>
       <div id="devices" class="devices"></div>
     </section>
 
@@ -36,6 +68,7 @@
         <label>Echo <select name="device"><option value="">All Echos</option></select></label>
         <label>Period <select name="days"></select></label>
         <label class="grow">Search <input name="q" type="search" placeholder="Song or artist" maxlength="100"></label>
+        <button class="ghost danger" id="history-clear" type="button" hidden>Clear history</button>
       </form>
       <div class="table-wrap">
         <table class="history">
@@ -100,7 +133,36 @@
     </section>
   </main>
 
-  <footer class="muted">echo-tunes <span id="version"></span> · read-only · history kept <span id="keep"></span></footer>
+  <footer class="muted">echo-tunes <span id="version"></span> · private dashboard · history kept <span id="keep"></span></footer>
+
+  <div class="p-bar" id="p-bar" hidden>
+    <div class="p-now">
+      <img class="p-art" id="p-art" alt="" width="56" height="56">
+      <div class="t"><b id="p-title"></b><span id="p-artist"></span></div>
+    </div>
+    <div class="p-center">
+      <div class="p-ctrl">
+        <button type="button" class="icon-btn" id="p-prev" aria-label="Previous">⏮</button>
+        <button type="button" class="icon-btn big" id="p-play" aria-label="Play">▶</button>
+        <button type="button" class="icon-btn" id="p-next" aria-label="Next">⏭</button>
+      </div>
+      <div class="p-seek">
+        <span id="p-pos">0:00</span>
+        <input type="range" id="p-range" min="0" max="1000" value="0" aria-label="Position">
+        <span id="p-dur">0:00</span>
+      </div>
+    </div>
+    <div class="p-side">
+      <span class="chip plain" id="p-where"></span>
+      <button type="button" class="ghost" id="p-queue-btn" aria-expanded="false" aria-controls="p-queue">Queue</button>
+    </div>
+  </div>
+  <aside class="p-queue card" id="p-queue" hidden aria-label="Queue">
+    <div class="row-between"><h2>Up next</h2><button type="button" class="ghost" id="p-queue-close">Close</button></div>
+    <ol class="queue" id="p-queue-list"></ol>
+  </aside>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <audio id="p-audio" preload="auto" hidden></audio>
 
   <template id="device-card">
     <article class="device card">

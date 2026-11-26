@@ -29,6 +29,8 @@ class PlayerState:
     finished: bool = False  # the current song played to its end (resume starts over/next)
     plays: int = 0  # bumped for every Play directive, so no two streams share a token
     unshuffled: list[str] = field(default_factory=list)  # queue order before shuffle (IDs)
+    # A song chosen on the dashboard to play as soon as the Echo lets us (its next event).
+    pending: str = ""
 
     def source_of(self, index: int) -> str:
         """Why this song is playing, for the history."""
@@ -107,6 +109,32 @@ class PlayerState:
             self.unshuffled = [v for v in self.unshuffled if v in kept]
         return len(added)
 
+    def insert(self, tracks: list[Track], *, at_end: bool, max_len: int) -> int:
+        """Put songs right after the current one (or at the end), moving them if queued already.
+
+        The current song stays where it is and tokens stay valid (they're matched by song).
+        Returns how many songs were placed.
+        """
+        cur = self.current
+        incoming = [t for t in dict((t.video_id, t) for t in tracks).values() if t != cur]
+        incoming = [t for t in incoming if not cur or t.video_id != cur.video_id]
+        ids = {t.video_id for t in incoming}
+        before = [t for t in self.tracks[: self.index + 1] if t.video_id not in ids]
+        after = [t for t in self.tracks[self.index + 1 :] if t.video_id not in ids]
+        self.tracks = before + after + incoming if at_end else before + incoming + after
+        self.index = max(0, len(before) - 1) if cur else 0
+        overflow = len(self.tracks) - max_len
+        if overflow > 0:
+            drop = min(overflow, self.index)
+            self.tracks = self.tracks[drop:][:max_len]
+            self.index -= drop
+        if self.unshuffled:
+            self.unshuffled = [t.video_id for t in self.tracks]
+        return len(incoming)
+
+    def position_of(self, video_id: str) -> int | None:
+        return next((i for i, t in enumerate(self.tracks) if t.video_id == video_id), None)
+
     def next_index(self) -> int | None:
         if self.index + 1 < len(self.tracks):
             return self.index + 1
@@ -152,6 +180,7 @@ class PlayerState:
             "finished": self.finished,
             "plays": self.plays,
             "unshuffled": self.unshuffled,
+            "pending": self.pending,
         }
 
     @classmethod
@@ -172,4 +201,5 @@ class PlayerState:
             finished=bool(d.get("finished", False)),
             plays=int(d.get("plays", 0)),
             unshuffled=[str(v) for v in d.get("unshuffled", [])],
+            pending=str(d.get("pending", "")),
         )

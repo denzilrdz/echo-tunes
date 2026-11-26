@@ -43,8 +43,10 @@ CERT_HOST = "s3.amazonaws.com"
 CERT_PATH_PREFIX = "/echo.api/"
 # Amazon's signing certificates are named echo-api-cert.pem or echo-api-cert-<n>.pem. Accepting
 # only that keeps unsigned requests from making the server download arbitrary S3 objects.
-# ASCII digits only and a full match (``$`` would also accept a trailing newline).
-CERT_FILE = re.compile(r"/echo\.api/echo-api-cert(-[0-9]{1,4})?\.pem", re.ASCII)
+# Amazon's rule is only "path starts with /echo.api/" (after normalising); its file names
+# vary (e.g. echo-api-cert-12-ats.pem), so allow any plain .pem file name in that folder.
+# ASCII only, full match (``$`` would also accept a trailing newline).
+CERT_FILE = re.compile(r"/echo\.api/[A-Za-z0-9._-]{1,100}\.pem", re.ASCII)
 FAILED_CERT_TTL = 600.0
 SIGNING_NAME = "echo-api.amazon.com"
 MAX_SKEW_SECONDS = 150
@@ -88,7 +90,7 @@ def check_cert_url(url: str) -> str:
         or parts.username
         or parts.password
     ):
-        raise RequestRejected("certificate URL is not Amazon's")
+        raise RequestRejected(f"certificate URL is not Amazon's: {url[:200]!r}")
     return f"https://{CERT_HOST}{path}"
 
 

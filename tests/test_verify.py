@@ -86,8 +86,9 @@ def test_rejects_missing_headers() -> None:
         "https://s3.amazonaws.com/echo.api/../evil/cert.pem",
         "https://s3.amazonaws.com/echo.api/cert.pem?x=1",
         "https://user@s3.amazonaws.com/echo.api/cert.pem",
-        "https://s3.amazonaws.com/echo.api/anything-else.pem",
         "https://s3.amazonaws.com/echo.api/echo-api-cert-1.pem.exe",
+        "https://s3.amazonaws.com/echo.api/sub/dir.pem",
+        "https://s3.amazonaws.com/echo.api/.pem",
         "https://s3.amazonaws.com/echo.api/echo-api-cert-\u0661.pem",  # Arabic-Indic digit
         "https://s3.amazonaws.com/echo.api/echo-api-cert.pem%0A",
     ],
@@ -108,6 +109,13 @@ def test_cert_url_rules(url: str) -> None:
 )
 def test_cert_url_allowed(url: str) -> None:
     assert check_cert_url(url) == "https://s3.amazonaws.com/echo.api/echo-api-cert.pem"
+
+
+@pytest.mark.parametrize("suffix", ["-12", "-12-ats", "-12345"])
+def test_amazons_real_file_names_are_accepted(suffix: str) -> None:
+    """0.2.2 refused every real request: Amazon's file names don't fit a fixed pattern."""
+    url = f"https://s3.amazonaws.com/echo.api/echo-api-cert{suffix}.pem"
+    assert check_cert_url(url) == url
 
 
 def test_certificate_cache_is_bounded() -> None:

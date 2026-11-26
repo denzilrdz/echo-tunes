@@ -6,6 +6,44 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-26
+
+A web player, and the dashboard becomes an app you can install on your phone.
+
+### Added
+
+- **Web player** (new first tab): search songs, albums, artists and playlists; browse quick
+  picks, your mixes and library (when signed in), trending charts, top artists, and moods &
+  genres. Play in the browser with a queue, radio that keeps going, media keys and lock-screen
+  controls, or pick an Echo under *Play on* to queue songs there (*Play*, *Next*, *Add to
+  queue*, *Radio*). Songs picked for an Echo play after the current song: Alexa only lets a
+  skill change playback when the Echo checks in.
+- `ECHO_TUNES_EXPERIMENTAL_SKIP`: let the player try to skip the song playing on an Echo by
+  cutting its audio stream (works only while the Echo is still downloading it; off by default).
+- **Install as an app** (PWA): manifest, icons and a service worker, so the dashboard can be
+  added to a phone's home screen when opened over HTTPS. `ECHO_TUNES_APP_NAME`,
+  `ECHO_TUNES_APP_COLOR` and `ECHO_TUNES_APP_ICON` change its name, colour and icon.
+- **Clear history** on the History tab.
+- Player and browse endpoints in the JSON API (docs/DASHBOARD.md).
+
+### Changed
+
+- Actions on the dashboard (play, queue, skip, clear history) need
+  `ECHO_TUNES_DASHBOARD_PASSWORD` to be set, and are only accepted as same-origin JSON requests.
+  Browsing and the read-only pages work as before.
+- The dashboard's content security policy allows artwork from Google's image servers
+  (`*.googleusercontent.com`, `yt3.ggpht.com`) besides `i.ytimg.com`.
+- README, landing page, screenshots and social preview lead with the player.
+- Release candidates: a `vX.Y.Z-rc.N` tag publishes a pre-release image to try before `vX.Y.Z`.
+
+### Fixed
+
+- **Alexa requests were refused since 0.2.1** ("There was a problem with the requested skill's
+  response"): the signing-certificate check only accepted one file-name pattern, and Amazon's
+  real file names differ. Any plain `.pem` file in Amazon's `/echo.api/` folder is accepted
+  again (the folder, host, HTTPS and certificate chain checks are unchanged), and refused URLs
+  are logged.
+
 ## [0.2.2] - 2026-11-26
 
 Fixes from a full review of 0.2.1.
@@ -165,7 +203,8 @@ First release.
   `Content-Length` can't be read without limit.
 - CI's secret scan works on pull requests from Dependabot.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.1.0...v0.2.0

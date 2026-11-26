@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "img"
 CHROME = os.environ.get("CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 SHOTS = {  # name: (tab, height)
+    "player": ("play", 800),
     "dashboard": ("now", 720),
     "history": ("history", 760),
     "stats": ("stats", 900),

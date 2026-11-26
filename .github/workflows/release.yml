@@ -29,12 +29,12 @@ jobs:
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           enable-cache: false
-      - name: Tag matches the version in pyproject.toml
+      - name: Tag matches the version in pyproject.toml (vX.Y.Z, or vX.Y.Z-rc.N to try it first)
         env:
           TAG: ${{ github.ref_name }}
         run: |
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
-          test "v${version}" = "$TAG" || { echo "::error::tag $TAG but pyproject.toml says $version"; exit 1; }
+          test "v${version}" = "${TAG%%-rc.*}" || { echo "::error::tag $TAG but pyproject.toml says $version"; exit 1; }
       - run: uv sync --locked
       - run: uv run pytest -q
 

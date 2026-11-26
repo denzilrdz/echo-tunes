@@ -38,6 +38,9 @@ def test_reads_comma_separated_skill_ids(monkeypatch: pytest.MonkeyPatch, tmp_pa
         {"DEVICE_NAMES": "abc=Living room, kitchen"},
         {"YTDLP_COOKIES": "/nonexistent/cookies.txt"},
         {"PORT": "0"},
+        {"APP_COLOR": "blue"},
+        {"APP_ICON": "/nonexistent/icon.png"},
+        {"APP_NAME": ""},
     ],
 )
 def test_rejects_bad_settings(
@@ -74,3 +77,10 @@ def test_data_dir_defaults_to_a_local_folder(
     for k, v in {"PUBLIC_URL": "https://music.example.com", "SKILL_IDS": ID1}.items():
         monkeypatch.setenv(f"ECHO_TUNES_{k}", v)
     assert Settings().data_dir == Path("data")  # type: ignore[call-arg]
+
+
+def test_app_icon_must_be_a_png(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = tmp_path / "icon.png"
+    fake.write_text("<svg/>")
+    with pytest.raises(ValidationError, match="not a PNG"):
+        make(monkeypatch, tmp_path, APP_ICON=str(fake))

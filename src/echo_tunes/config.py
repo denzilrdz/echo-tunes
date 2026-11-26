@@ -65,6 +65,16 @@ class Settings(BaseSettings):
         default=None, description="Optional password for the dashboard and /metrics (user: admin)."
     )
     history_days: int = Field(default=15, ge=0, le=3650, description="0 = don't keep history.")
+    # Dashboard player: "Skip now" on an Echo cuts the current song's audio stream so the Echo
+    # moves on. Alexa has no official way to do this; it only works if the Echo hasn't already
+    # downloaded the whole song, so it's off unless you want to try it.
+    experimental_skip: bool = False
+    # How the dashboard looks when added to a phone's home screen (it's an installable web app).
+    app_name: str = Field(default="echo-tunes", min_length=1, max_length=40)
+    app_color: str = Field(default="#1f6feb", pattern=r"^#[0-9a-fA-F]{6}$")
+    app_icon: Path | None = Field(
+        default=None, description="Your own square PNG icon (512x512 or larger) for the app."
+    )
     # Friendly Echo names: "<end of device ID>=Living room,<end>=Kitchen" (IDs are long; the
     # dashboard shows the last 12 characters to copy from).
     device_names: Annotated[dict[str, str], NoDecode] = Field(default_factory=dict)
@@ -84,6 +94,20 @@ class Settings(BaseSettings):
     def _cookies_exist(cls, v: Path | None) -> Path | None:
         if v is not None and not v.is_file():
             raise ValueError(f"cookies file {v} not found")
+        return v
+
+    @field_validator("app_icon")
+    @classmethod
+    def _icon_is_png(cls, v: Path | None) -> Path | None:
+        if v is None:
+            return v
+        if not v.is_file():
+            raise ValueError(f"icon file {v} not found")
+        with v.open("rb") as f:
+            if f.read(8) != b"\x89PNG\r\n\x1a\n":
+                raise ValueError(f"{v} is not a PNG image")
+        if v.stat().st_size > 2_000_000:
+            raise ValueError(f"{v} is over 2 MB")
         return v
 
     @field_validator("skill_ids", mode="before")

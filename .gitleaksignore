@@ -1,0 +1,3 @@
+# False positives (gitleaks fingerprint: commit:file:rule:line). Each needs a reason.
+# Certificate file names in a test parameter list, read as an API key; reworded since.
+a9d9424fba9c7199cadc8abf3b9c247a1e8a71f1:tests/test_verify.py:generic-api-key:115

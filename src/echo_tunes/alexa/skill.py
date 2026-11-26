@@ -318,6 +318,9 @@ class Skill:
         track = state.tracks[idx] if idx is not None else None
         match event:
             case "PlaybackStarted":
+                jump = self._pending_jump(state, track)
+                if jump is not None:
+                    return r.only(jump)
                 if idx is not None and track is not None:
                     state.index, state.offset_ms, state.failures = idx, 0, 0
                     state.finished = False
@@ -390,6 +393,9 @@ class Skill:
                     # The song queued *next* failed while another still plays: queue the one
                     # after it instead, without cutting off what's playing.
                     return r.only(self._play(state, after, behavior="REPLACE_ENQUEUED"))
+                jump = self._pending_jump(state, None)  # e.g. "skip now" from the dashboard
+                if jump is not None:
+                    return r.only(jump)
                 state.index = idx
                 return r.only(self._play(state, after))
         return r.empty()
@@ -407,6 +413,63 @@ class Skill:
             case "PreviousCommandIssued":
                 return await self._skip(state, forward=False, speak=False)
         return r.empty()
+
+    # --- from the dashboard's player ----------------------------------------------------------
+    async def dashboard_queue(
+        self, device: str, tracks: list[Track], mode: str, source: str
+    ) -> dict[str, Any]:
+        """Queue songs on an Echo: ``next``, ``queue`` (at the end) or ``now``.
+
+        Alexa only lets a skill change playback in reply to the Echo, so nothing changes this
+        instant: the songs play when the current one ends, and ``now`` jumps to the first one
+        at the Echo's next playback event (if it had already lined up another song).
+        """
+        if mode not in ("next", "queue", "now"):
+            raise ValueError("mode must be next, queue or now")
+        async with self._lock_for(device):
+            state = self.store.get(device)
+            if state.current is None:
+                raise LookupError("Start something on this Echo by voice first.")
+            placed = state.insert(tracks, at_end=mode == "queue", max_len=self.cfg.max_queue)
+            first = next(iter(t for t in tracks if state.position_of(t.video_id) is not None), None)
+            if mode == "now" and first is not None and first != state.current:
+                state.pending = first.video_id
+            if placed and mode != "queue":
+                state.source = source
+            self.store.put(device, state)
+            self._warm_next(state)
+        note = "Plays after the current song." if mode != "queue" else "Added to the end."
+        return {"placed": placed, "note": note}
+
+    async def dashboard_skip(self, device: str) -> str | None:
+        """Mark the next song to jump to; returns the current song's ID (whose stream the
+        caller cuts, so the Echo moves on)."""
+        async with self._lock_for(device):
+            state = self.store.get(device)
+            cur = state.current
+            if cur is None:
+                return None
+            nxt = state.next_index()
+            if nxt is None:
+                await self._top_up(state)
+                nxt = state.next_index()
+            if nxt is not None and not state.pending:
+                state.pending = state.tracks[nxt].video_id
+            self.store.put(device, state)
+            return cur.video_id
+
+    def _pending_jump(self, state: PlayerState, started: Track | None) -> dict[str, Any] | None:
+        """A song is starting but the dashboard asked for another one: switch to it now."""
+        if not state.pending:
+            return None
+        if started is not None and started.video_id == state.pending:
+            state.pending = ""
+            return None
+        j = state.position_of(state.pending)
+        state.pending = ""
+        if j is None:
+            return None
+        return self._play(state, j)
 
     # --- helpers --------------------------------------------------------------------------------
     def _play(

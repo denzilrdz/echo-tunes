@@ -91,10 +91,11 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
     password = (
         settings.dashboard_password.get_secret_value() if settings.dashboard_password else None
     )
+    relay = StreamRelay(resolver, client, probe_client)
     services = Services(
         skill=skill,
         verifier=AlexaVerifier(settings.skill_ids),
-        relay=StreamRelay(resolver, client, probe_client),
+        relay=relay,
         stream_secret=settings.stream_secret,
         dashboard=DashboardDeps(
             store=store,
@@ -108,6 +109,14 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             ),
             run_checks=lambda: _setup_checks(settings, catalog, resolver, password),
             test_play=lambda: _test_play(skill),
+            catalog=catalog,
+            skill=skill,
+            cut_stream=relay.slots.cut,
+            experimental_skip=settings.experimental_skip,
+            location=settings.location,
+            app_name=settings.app_name,
+            app_color=settings.app_color,
+            app_icon=settings.app_icon,
         ),
     )
     return services, [resolver, store, history, client, probe_client, services.verifier, catalog]
@@ -232,6 +241,9 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             METRICS.streams.labels("bad_link").inc()
             return Response(status_code=404)
         refused = s.relay.slots.acquire(token)
+        if refused == "cut":
+            METRICS.streams.labels("cut").inc()
+            return Response(status_code=410)
         if refused:
             METRICS.streams.labels("too_many").inc()
             log.warning("refused a stream for %s: %s", video_id, refused)
@@ -269,6 +281,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             s.relay.body(source, rng, video_id),
             length=rng.length,
             on_close=lambda: s.relay.slots.release(token),
+            abort=s.relay.slots.abort_event(token),
             status_code=status,
             headers=headers,
             media_type=source.mime,

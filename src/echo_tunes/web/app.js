@@ -39,7 +39,7 @@ const ago = (t) => {
 const clock = (t) => new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const echoName = (d) => d.name || d.device_name || `Echo …${(d.id || d.device || "").slice(-6)}`;
 
-const state = { tab: "now", now: null, health: null, devices: [], history: { offset: 0, rows: [] }, keepDays: 15 };
+const state = { tab: "play", now: null, health: null, devices: [], history: { offset: 0, rows: [] }, keepDays: 15 };
 
 // ---------- tabs ----------
 for (const b of document.querySelectorAll(".tabs button")) {
@@ -303,6 +303,11 @@ $("#test-play").addEventListener("click", async () => {
   }
 });
 
+// ---------- installable app (PWA) ----------
+if ("serviceWorker" in navigator && !DEMO && window.isSecureContext) {
+  navigator.serviceWorker.register("/sw.js").catch((err) => console.warn("service worker:", err));
+}
+
 // ---------- refresh loop ----------
 async function refresh() {
   try {
@@ -318,12 +323,13 @@ async function refresh() {
     if (state.tab === "stats") await loadStats();
     if (state.tab === "monitor") renderMonitor(health);
     if (state.tab === "setup" && !$("#setup-checks").children.length) await loadSetup(false);
+    if (typeof window.playerRefresh === "function") await window.playerRefresh(); // player.js
   } catch (err) {
     $("#status").replaceChildren(el("span", { class: "chip bad", text: "Can't reach echo-tunes" }));
     console.warn(err);
   }
 }
-setInterval(() => { if (!document.hidden && (state.tab === "now" || state.tab === "monitor")) refresh(); }, 5000);
+setInterval(() => { if (!document.hidden && ["now", "monitor", "play"].includes(state.tab)) refresh(); }, 5000);
 setInterval(() => { if (!document.hidden && state.tab === "history") loadHistory(true).catch(() => {}); }, 30000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
-show((location.hash.slice(1) in { now: 1, history: 1, stats: 1, monitor: 1, setup: 1 }) ? location.hash.slice(1) : "now");
+show((location.hash.slice(1) in { play: 1, now: 1, history: 1, stats: 1, monitor: 1, setup: 1 }) ? location.hash.slice(1) : "play");

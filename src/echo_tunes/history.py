@@ -195,6 +195,14 @@ class History:
             "per_day": [dict(r) for r in per_day],
         }
 
+    def clear(self) -> int:
+        """Delete the whole play history; returns how many plays were removed."""
+        with self._lock:
+            removed = self._db.execute("DELETE FROM plays").rowcount
+            self._db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self._db.execute("VACUUM")  # really gone from the file, not just marked free
+        return int(removed)
+
     def count(self) -> int:
         with self._lock:
             return int(self._db.execute("SELECT COUNT(*) FROM plays").fetchone()[0])

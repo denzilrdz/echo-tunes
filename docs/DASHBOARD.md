@@ -1,11 +1,18 @@
-# Dashboard
+# Dashboard and player
 
-A private web page that shows what your Echos are doing.
-**[Try the demo](https://denzilrdz.github.io/echo-tunes/)** (sample data, nothing plays).
+A private web app: search and play YouTube Music in your browser or line songs up on an Echo,
+see what every Echo is playing, your history and stats. Add it to your phone's home screen and
+it works like an app. **[Try the demo](https://denzilrdz.github.io/echo-tunes/demo/)** (sample
+data, nothing plays).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/player-dark.png" />
+  <img src="img/player-light.png" alt="The player: search, your library, quick picks, trending playlists and moods, with the player bar at the bottom" width="100%" />
+</picture>
 
 | Tab | What you see |
 | --- | --- |
+| **Player** | Search songs, albums, artists and playlists; browse quick picks, your mixes and library (when signed in), trending charts, top artists and moods & genres. Play in this browser (with a queue, radio that keeps going, and lock-screen controls) or choose an Echo under **Play on** to queue songs there. |
 | **Now playing** | Each Echo's song with artwork and a live progress bar, why it's playing ("Asked for …", "Radio after …", "Playlist: …"), shuffle/loop, and the next 10 songs. Playing Echos come first. |
 | **History** | Every song played in the last 15 days (configurable): when, which Echo, why, how long it was listened to, and whether it finished, was skipped, paused or failed. Filter by Echo and period, search by song or artist. |
 | **Stats** | Plays, listening time, different songs and artists, plays per day, top songs and top artists, for a chosen period and Echo. |
@@ -27,7 +34,54 @@ A private web page that shows what your Echos are doing.
   <img src="img/setup-light.png" alt="Setup tab: the setup checklist and the Test play button" width="100%" />
 </picture>
 
-The dashboard is **read-only**: nothing on it can change what plays.
+## Player
+
+**Play on: This browser.** The song streams from your server through your public address,
+like on an Echo. When the queue runs out, a radio of similar songs keeps it going. Media keys
+and your phone's lock screen control it. Songs played here appear in the history as
+*dashboard-browser*.
+
+**Play on: an Echo.** Alexa only lets a skill change what an Echo plays when the Echo checks in
+(when a song starts or is about to end); a web page can't push to it. So:
+
+| Button | On an Echo |
+| --- | --- |
+| **▶ Play** | Plays after the current song. If the Echo had already lined up its next song, it switches as soon as that one starts. |
+| **Next** | Right after the current song. |
+| **+** (Add to queue) | At the end of the queue. |
+| **Radio** | A radio of similar songs, after the current song. |
+
+The Echo must be playing (or paused) something from echo-tunes; start it by voice the first
+time. Pause, resume and previous stay with your voice and the Echo's buttons.
+
+**Skip now (experimental).** With `ECHO_TUNES_EXPERIMENTAL_SKIP=true`, the ⏭ button on an Echo
+cuts the current song's audio stream, so the Echo gives up on it and plays the next. It only
+works while the Echo is still downloading the song (Echos often fetch a whole song early), so
+it may do nothing; it's off by default.
+
+**Actions need a password.** Browsing works on any private network, but anything that changes
+something (play, queue, skip, clear history) only works when `ECHO_TUNES_DASHBOARD_PASSWORD`
+is set. It's then a JSON request from the dashboard's own page (other websites can't trigger
+it). Your monitoring needs the password too once it's set (see [MONITORING.md](MONITORING.md)).
+
+## Install it as an app
+
+The dashboard is a progressive web app. Open it over **HTTPS** (browsers only install apps from
+secure addresses, e.g. Tailscale Serve, Caddy with a LAN certificate, or `localhost`), then:
+
+- **Android (Chrome):** menu → *Install app* (or *Add to Home screen*).
+- **iPhone/iPad (Safari):** Share → *Add to Home Screen*.
+- **Desktop (Chrome, Edge):** the install icon in the address bar.
+
+It opens full screen with its own icon. Change how it looks without touching code:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ECHO_TUNES_APP_NAME` | `echo-tunes` | Name under the icon and in the title bar. |
+| `ECHO_TUNES_APP_COLOR` | `#1f6feb` | Theme colour (`#rrggbb`), used by the phone's status bar. |
+| `ECHO_TUNES_APP_ICON` | (built in) | Path to your own square PNG (512×512 or larger, under 2 MB), e.g. `/data/icon.png`. |
+
+## Safety
 
 It only answers to IP addresses, `localhost`, your public URL's name and names listed in
 `ECHO_TUNES_DASHBOARD_HOSTS`, and refuses background requests from other websites. That stops
@@ -61,6 +115,7 @@ private as long as you don't publish 8081 to the internet yourself.
 | `ECHO_TUNES_DASHBOARD_PASSWORD` | (none) | Optional password (HTTP Basic, user `admin`). |
 | `ECHO_TUNES_HISTORY_DAYS` | `15` | Days of play history to keep. `0` keeps none (and deletes what's there). |
 | `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `BEWY4D23ORJQ=Living room,A6TA55XMCKTY=Kitchen`. |
+| `ECHO_TUNES_EXPERIMENTAL_SKIP` | `false` | Let the player try to skip the song playing on an Echo (see [Player](#player)). |
 
 ### Naming your Echos
 
@@ -73,13 +128,15 @@ set `ECHO_TUNES_DEVICE_NAMES=BEWY4D23ORJQ=Living room`, then restart.
 - Stored in `history.sqlite3` in the data folder: song, artist, which Echo, when, why, how long.
 - Rows older than `ECHO_TUNES_HISTORY_DAYS` are deleted automatically (checked hourly and at
   start), so the file stays small: about 1 KB per song played.
-- Nothing is sent anywhere. Artwork is loaded by your browser from YouTube's image server
-  (`i.ytimg.com`), like on YouTube itself.
+- **Clear history** (History tab, needs the password) deletes every play at once, and the
+  space it used.
+- Nothing is sent anywhere. Artwork is loaded by your browser from Google's image servers
+  (`i.ytimg.com`, `*.googleusercontent.com`), like on YouTube Music itself.
 
 ## JSON API
 
-Everything the page shows comes from read-only JSON endpoints on the same port, handy for
-scripts and home automation:
+Everything the page shows comes from JSON endpoints on the same port, handy for scripts and
+home automation:
 
 | Endpoint | Returns |
 | --- | --- |
@@ -90,3 +147,8 @@ scripts and home automation:
 | `GET /api/health` | Health summary (see [MONITORING.md](MONITORING.md)) |
 | `GET /api/setup` | The setup checklist (cached for a minute) |
 | `GET /metrics` | Prometheus metrics |
+| `GET /api/search?q=…&kind=song\|album\|artist\|playlist` | YouTube Music search |
+| `GET /api/browse/home`, `/api/browse/explore`, `/api/browse/library` | Home rows, charts and moods, your playlists |
+| `GET /api/browse/tracks?kind=…&id=…` | The songs of a playlist, album, artist, or a song's radio |
+| `POST /api/play/echo` `{"device", "mode": "now\|next\|queue", "tracks": [...]}` | Queue songs on an Echo (password) |
+| `POST /api/history/clear` `{}` | Delete the history (password) |

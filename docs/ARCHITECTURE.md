@@ -32,7 +32,7 @@ flowchart LR
 | [`player/`](../src/echo_tunes/player) | Each Echo's queue, position, shuffle and loop, stored in SQLite. |
 | [`tokens.py`](../src/echo_tunes/tokens.py) | Signed, expiring stream links. |
 | [`history.py`](../src/echo_tunes/history.py) | Play history in SQLite, pruned after `ECHO_TUNES_HISTORY_DAYS`. |
-| [`dashboard.py`](../src/echo_tunes/dashboard.py), [`web/`](../src/echo_tunes/web) | The private dashboard and its read-only JSON API, on a second port. |
+| [`dashboard.py`](../src/echo_tunes/dashboard.py), [`web/`](../src/echo_tunes/web) | The private dashboard, player and its JSON API, on a second port (actions need the password). |
 | [`metrics.py`](../src/echo_tunes/metrics.py) | Prometheus metrics with fixed label values. |
 | [`checks.py`](../src/echo_tunes/checks.py) | Setup checks shared by `echo-tunes doctor` and the dashboard. |
 
@@ -104,7 +104,8 @@ the example compose files as a safety net.
   and expire, so the server can't be used as an open proxy to YouTube.
 - The public port has no other endpoints besides `/` and `/healthz` (no admin UI, no API docs).
 - The dashboard, its JSON API and `/metrics` live on a **separate port** (8081) that the public
-  tunnel or proxy never forwards. It's read-only, sends strict security headers (a
-  content security policy allowing only its own scripts), builds every piece of text with
-  `textContent` (song titles can't inject markup), and can require a password.
+  tunnel or proxy never forwards. Its actions (play, queue, clear history) need the password
+  and a same-origin JSON request. It sends strict security headers (a content security policy
+  allowing only its own scripts) and builds every piece of text with `textContent` (song titles
+  can't inject markup).
 - The container runs as a non-root user on a read-only filesystem with all capabilities dropped.

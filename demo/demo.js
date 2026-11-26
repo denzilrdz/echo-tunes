@@ -38,6 +38,7 @@
       return `data:image/svg+xml,${encodeURIComponent(svg)}`;
     };
     document.documentElement.classList.add("shots");
+    window.ECHO_TUNES_DEMO_AUTOPLAY = SONGS.slice(0, 6).map((s) => ({ ...s }));
   }
   const DEVICES = [{ id: "DEMO0LIVING1", name: "Living room" }, { id: "DEMO0KITCHEN", name: "Kitchen" }];
   const SHOTS = new URLSearchParams(location.search).has("shots");
@@ -113,9 +114,58 @@
     ["YouTube Music account", "ok", "Signed in: your library is available"],
   ].map(([name, status, detail]) => ({ name, status, detail, hint: "", link: "" }));
 
-  window.ECHO_TUNES_DEMO = async (path) => {
+  // --- the player: sample browsing data (made-up names, generated artwork) ---
+  const cover = (seedText) => {
+    let h = 0;
+    for (const ch of seedText) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(${h},72%,58%)'/><stop offset='1' stop-color='hsl(${(h + 70) % 360},62%,28%)'/></linearGradient></defs><rect width='100' height='100' fill='url(#g)'/><circle cx='72' cy='30' r='22' fill='hsla(0,0%,100%,.16)'/><circle cx='26' cy='78' r='34' fill='hsla(0,0%,0%,.14)'/></svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  };
+  const songItem = (s) => ({ kind: "song", id: s.video_id, title: s.title, subtitle: s.artist, image: null, duration: s.duration });
+  const list = (kind, title, subtitle) => ({ kind, id: `${kind}-${title.replace(/\W+/g, "-")}`, title, subtitle, image: cover(title), duration: null });
+  const PLAYLISTS = ["Morning Commute", "Rainy Day Acoustic", "Late Night Drive", "Focus Flow", "Sunday Brunch", "Throwback Party"]
+    .map((t) => list("playlist", t, "Playlist"));
+  const CHARTS = ["Top 100 Songs", "Trending Now", "Top Music Videos", "Hindi Top 50", "Indie Rising"].map((t) => list("playlist", t, "Chart"));
+  const ARTISTS = ["Juniper Vale", "Mira Okafor", "Night Ferry", "Ines Marlow", "Rafa Quinn", "Odette Rain"].map((t) => list("artist", t, "Artist"));
+  const ALBUMS = ["Paper Kites", "Harbour Lights", "Copper Skies", "Second Window"].map((t) => list("album", t, "Album · 2026"));
+  const MOODS = [
+    { title: "Moods & moments", categories: ["Chill", "Commute", "Energy boosters", "Feel good", "Focus", "Party", "Romance", "Sleep", "Workout"].map((t) => ({ title: t, params: `demo-${t}` })) },
+    { title: "Genres", categories: ["Bollywood", "Indie", "Pop", "Hip-hop", "Jazz", "Classical", "Electronic", "Rock"].map((t) => ({ title: t, params: `demo-${t}` })) },
+  ];
+  const tracksFor = (id) => {
+    let h = 0;
+    for (const ch of id) h = (h * 7 + ch.charCodeAt(0)) % SONGS.length;
+    return [...SONGS.slice(h), ...SONGS.slice(0, h)];
+  };
+  const player = () => {
+    const n = now();
+    return { actions: true, experimental_skip: false, signed_in: true,
+             echos: n.devices.map((d) => ({ id: d.id, name: d.name, playing: d.playing, current: d.current, updated: d.updated, position_ms: d.position_ms })) };
+  };
+
+  window.ECHO_TUNES_DEMO = async (path, body) => {
     const url = new URL(path, "http://demo"), q = url.searchParams, days = Number(q.get("days") || 7);
     switch (url.pathname) {
+      case "/api/player": return player();
+      case "/api/browse/home": return { sections: [
+        { title: "Quick picks", items: SONGS.slice(0, 8).map(songItem) },
+        { title: "Mixed for you", items: PLAYLISTS.slice(0, 4).map((p, i) => ({ ...p, title: ["My Supermix", "Discover Mix", "New Release Mix", "Replay Mix"][i], image: cover(`mix${i}`) })) },
+        { title: "Playlists for your mood", items: PLAYLISTS },
+      ] };
+      case "/api/browse/explore": return { charts: CHARTS, artists: ARTISTS, moods: MOODS };
+      case "/api/browse/library": return { items: [{ ...list("playlist", "Liked songs", "Your likes"), id: "LM" }, ...PLAYLISTS.slice(0, 3)] };
+      case "/api/browse/mood": return { items: PLAYLISTS.map((p) => ({ ...p, id: `${p.id}-${q.get("params")}` })) };
+      case "/api/browse/tracks": return { title: "Songs", tracks: tracksFor(q.get("id") || "") };
+      case "/api/search": {
+        const term = (q.get("q") || "").toLowerCase(), kind = q.get("kind") || "song";
+        if (kind === "song") return { kind, items: SONGS.filter((s) => `${s.title} ${s.artist}`.toLowerCase().includes(term)).concat(SONGS).slice(0, 12).map(songItem) };
+        return { kind, items: { album: ALBUMS, artist: ARTISTS, playlist: PLAYLISTS }[kind] || [] };
+      }
+      case "/api/play/stream-link": return { demo: true };
+      case "/api/play/played": return { status: "ok" };
+      case "/api/play/echo": return { placed: (body && body.tracks || []).length, note: body && body.mode === "queue" ? "Added to the end." : "Plays after the current song." };
+      case "/api/play/skip": return { cut: 0, note: "Demo: on your server this skips (if turned on)." };
+      case "/api/history/clear": return { removed: 0 };
       case "/api/now": return now();
       case "/api/devices": return DEVICES;
       case "/api/history": {

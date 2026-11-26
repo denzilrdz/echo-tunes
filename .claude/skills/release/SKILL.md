@@ -12,7 +12,10 @@ description: Cut an echo-tunes release (version bump, changelog, signed tag, Git
    - Image tag in `compose.yaml` and `examples/*/compose.yaml`.
    - Open a PR, wait for CI, squash-merge.
 2. **Tag** on the updated `main`: `git tag -s vX.Y.Z -m "echo-tunes X.Y.Z"`, check with
-   `git verify-tag`, then `git push origin vX.Y.Z` (ask first). Pre-releases use `-rcN`.
+   `git verify-tag`, then `git push origin vX.Y.Z` (ask first). To try a release on a real
+   Echo first, tag `vX.Y.Z-rc.N` (same pyproject version): it publishes image `X.Y.Z-rc.N` as a
+   GitHub pre-release and leaves `latest` alone. Test in the Alexa developer console's
+   simulator (Test tab) and on the Echo, then tag `vX.Y.Z`.
 3. **Watch** `release.yml`: `check` (tag == version, tests) → `image` (multi-arch to ghcr.io
    with provenance, `latest` only for non-pre-releases) → wheel + sdist + `SHA256SUMS` +
    `echo-tunes-vX.Y.Z.intoto.jsonl` on a GitHub release (immutable once published).

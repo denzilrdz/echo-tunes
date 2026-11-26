@@ -18,6 +18,7 @@ import httpx
 from starlette.responses import StreamingResponse
 from starlette.types import Receive, Scope, Send
 
+from echo_tunes.cache import BoundedTTLCache
 from echo_tunes.metrics import METRICS
 from echo_tunes.music.resolver import AudioResolver, AudioSource
 
@@ -40,6 +41,10 @@ class StreamSlots:
         self.total, self.per_link = total, per_link
         self._open: dict[str, int] = {}
         self.count = 0
+        # Songs whose streams were cut on purpose ("skip now"): refused for a short while so
+        # the Echo gives up on them instead of resuming with a Range request.
+        self._cut: BoundedTTLCache[str, bool] = BoundedTTLCache(64, ttl=30)
+        self._abort: dict[str, asyncio.Event] = {}
 
     def acquire(self, key: str) -> str | None:
         """None if a slot was taken, else why not ("busy" or "link")."""
@@ -47,9 +52,25 @@ class StreamSlots:
             return "busy"
         if self._open.get(key, 0) >= self.per_link:
             return "link"
+        if self._cut.get(key.split(".", 1)[0]):
+            return "cut"
         self._open[key] = self._open.get(key, 0) + 1
+        self._abort.setdefault(key, asyncio.Event())
         self.count += 1
         return None
+
+    def abort_event(self, key: str) -> asyncio.Event:
+        return self._abort.setdefault(key, asyncio.Event())
+
+    def cut(self, video_id: str) -> int:
+        """Stop every open stream of this song and refuse new ones for a while."""
+        self._cut.set(video_id, True)
+        hit = 0
+        for key, event in self._abort.items():
+            if key.split(".", 1)[0] == video_id:
+                event.set()
+                hit += 1
+        return hit
 
     def release(self, key: str) -> None:
         n = self._open.get(key, 0) - 1
@@ -57,6 +78,7 @@ class StreamSlots:
             self._open[key] = n
         else:
             self._open.pop(key, None)
+            self._abort.pop(key, None)
         self.count = max(0, self.count - 1)
 
 
@@ -75,10 +97,12 @@ class AudioResponse(StreamingResponse):
         *,
         length: int,
         on_close: Callable[[], None],
+        abort: asyncio.Event | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(content, **kwargs)  # type: ignore[arg-type]
         self._length = length
+        self._abort = abort
         self._on_close = on_close
         self.outcome = "ok"
 
@@ -97,6 +121,9 @@ class AudioResponse(StreamingResponse):
         body = self.body_iterator
         try:
             async for chunk in body:
+                if self._abort is not None and self._abort.is_set():
+                    self.outcome = "cut"
+                    return
                 try:
                     await asyncio.wait_for(
                         send({"type": "http.response.body", "body": chunk, "more_body": True}),
