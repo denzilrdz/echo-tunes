@@ -23,7 +23,7 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 
 ---
 
-> **"Alexa, ask echo tunes to play Blinding Lights."**
+> **"Alexa, ask my tunes to play Blinding Lights."**
 > Your Echo plays the song, then keeps going with a radio of similar songs. Next, previous,
 > pause, resume, shuffle and loop all work by voice, and from the buttons in the Alexa app.
 
@@ -113,7 +113,7 @@ docker compose exec echo-tunes echo-tunes doctor
 ```
 
 **4. Enable testing** (the skill's *Test* tab → *Development*) and say:
-*"Alexa, ask echo tunes to play Tum Hi Ho."*
+*"Alexa, ask my tunes to play Tum Hi Ho."*
 
 **5. Optional: sign in** so you can say *"play my liked songs"* or *"play my playlist Road Trip"*:
 
@@ -133,7 +133,7 @@ sequenceDiagram
     participant ET as echo-tunes (your server)
     participant YT as YouTube Music
 
-    You->>Echo: "Alexa, ask echo tunes to play Blinding Lights"
+    You->>Echo: "Alexa, ask my tunes to play Blinding Lights"
     Echo->>Alexa: voice
     Alexa->>ET: POST /alexa (signed request)
     ET->>ET: check Amazon signature, skill ID, timestamp
@@ -181,7 +181,7 @@ adds your own library: liked songs, playlists and mixes.
 
 **Are there ads?** echo-tunes plays the song's audio file directly, so nothing is inserted between songs.
 
-**Can I just say "Alexa, play ..." without "ask echo tunes"?** No. Amazon only lets its built-in
+**Can I just say "Alexa, play ..." without "ask my tunes"?** No. Amazon only lets its built-in
 music services answer that; a private skill is always called by name. An Alexa routine can give
 you a shorter phrase.
 

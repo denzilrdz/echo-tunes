@@ -60,7 +60,8 @@ Sign in to the **[Alexa developer console](https://developer.amazon.com/alexa/co
 with **the same Amazon account your Echo uses** (creating a developer account is free).
 
 1. **Create skill.**
-   - *Skill name*: `echo tunes`
+   - *Skill name*: `echo tunes` (only shown in the console; you'll say **"my tunes"**, because
+     Amazon doesn't allow wake words like "Echo" or "Alexa" in the spoken name)
    - *Primary locale*: the language your Echo is set to. Check it in the Alexa app under
      *Devices → your Echo → Language*. "English (India)" is `en-IN`, "English (US)" is `en-US`, and so on.
    - *Type of experience*: **Music & Audio**
@@ -126,7 +127,7 @@ All good.
 Finally, in the developer console open the **Test** tab and set *Skill testing is enabled in*
 to **Development**. The skill is now live on every Echo on your account. Try:
 
-> "Alexa, ask echo tunes to play Tum Hi Ho."
+> "Alexa, ask my tunes to play Tum Hi Ho."
 
 See [all voice commands](VOICE_COMMANDS.md).
 

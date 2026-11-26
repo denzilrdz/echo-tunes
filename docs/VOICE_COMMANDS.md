@@ -1,7 +1,7 @@
 # Voice commands
 
-Start every request with **"Alexa, ask echo tunes to …"** (or open the skill with
-*"Alexa, open echo tunes"* and then say what you'd like). While music is playing, the playback
+Start every request with **"Alexa, ask my tunes to …"** (or open the skill with
+*"Alexa, open my tunes"* and then say what you'd like). While music is playing, the playback
 commands work on their own: *"Alexa, next"*.
 
 ## Play something
@@ -40,12 +40,12 @@ based on its last song carries on.
 | "Alexa, **start over**" / "**repeat**" |                            | Restarts the current song                       |
 | "Alexa, **shuffle**" / "**stop shuffling**" |                       | Shuffles the songs after the current one        |
 | "Alexa, **loop**" / "**stop looping**" |                            | Repeats the whole queue instead of adding radio |
-| "Alexa, ask echo tunes **what's playing**" |                        | Says the song and artist                        |
+| "Alexa, ask my tunes **what's playing**" |                        | Says the song and artist                        |
 
 ## Tips
 
 - **Name it the way it appears on YouTube Music.** "Play Shape of You Ed Sheeran" is more
   reliable than "play that Ed Sheeran song".
 - **Shorter phrase:** in the Alexa app, create a routine with a custom phrase such as
-  *"Alexa, Bollywood time"* whose action is *Custom → "ask echo tunes to play Bollywood hits"*.
+  *"Alexa, Bollywood time"* whose action is *Custom → "ask my tunes to play Bollywood hits"*.
 - **Volume** works as usual ("Alexa, volume 5"); it doesn't go through echo-tunes.

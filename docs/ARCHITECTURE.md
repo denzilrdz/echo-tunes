@@ -34,7 +34,7 @@ flowchart LR
 
 ## A song, step by step
 
-1. **"Alexa, ask echo tunes to play Blinding Lights."** Alexa sends a signed `IntentRequest`
+1. **"Alexa, ask my tunes to play Blinding Lights."** Alexa sends a signed `IntentRequest`
    (`PlayIntent`, `query = "blinding lights"`) to `POST /alexa`.
 2. echo-tunes verifies it, searches YouTube Music, and **immediately starts preparing the audio
    link** in a worker. While that runs it fetches a radio of similar songs and saves the queue.

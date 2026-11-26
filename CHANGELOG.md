@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The spoken name is now **"my tunes"** ("Alexa, ask my tunes to play …"). Amazon refuses to
+  build a skill whose invocation name contains a wake word, and "echo" is one.
+- YouTube's signed audio links (which include the server's IP address) are no longer written
+  to the log at the default log level.
+
 ## [0.1.0] - 2026-11-26
 
 First release.
