@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A public [dashboard demo](https://denzilrdz.github.io/echo-tunes/) with sample data, built
+  from the real dashboard files and published to GitHub Pages.
+
 ### Fixed
 
 - **Shuffle no longer stops the music** after the current song. Reordering or trimming the
