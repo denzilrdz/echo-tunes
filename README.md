@@ -8,6 +8,7 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 [![ci](https://github.com/denzilrdz/echo-tunes/actions/workflows/ci.yml/badge.svg)](https://github.com/denzilrdz/echo-tunes/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/denzilrdz/echo-tunes?include_prereleases&sort=semver)](https://github.com/denzilrdz/echo-tunes/releases)
 [![image: amd64 + arm64](https://img.shields.io/badge/image-amd64%20%7C%20arm64-2496ed)](https://github.com/denzilrdz/echo-tunes/pkgs/container/echo-tunes)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/denzilrdz/echo-tunes/badge)](https://scorecard.dev/viewer/?uri=github.com/denzilrdz/echo-tunes)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [Quick start](#quick-start) ·
