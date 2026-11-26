@@ -87,6 +87,9 @@ echo-tunes is built so nothing does:
 | Play history | On disk in SQLite, deleted after `ECHO_TUNES_HISTORY_DAYS` (default 15) |
 | Metrics | Fixed label values only (no song titles or device IDs), so a constant number of series |
 | Per-Echo locks | Weak references: a lock disappears when nobody's waiting on it |
+| Dashboard sign-ins | At most 100 sessions (`sessions.json`), expired ones pruned, oldest signed out beyond that |
+| Dashboard request bodies | 256 KB, checked by Content-Length and while reading (chunked) |
+| Certificate downloads for `/alexa` | At most 4 waiting or running; more are refused at once |
 | Background "prepare next song" tasks | Removed from their set when done; duplicates skipped |
 | yt-dlp / Deno | Separate processes, recycled every N songs |
 | glibc memory fragmentation | `MALLOC_ARENA_MAX=2` in the image |

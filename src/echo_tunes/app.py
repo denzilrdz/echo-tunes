@@ -104,6 +104,13 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             device_names=settings.device_names,
             password=password or None,
             session_days=settings.dashboard_session_days,
+            api_token=(
+                settings.dashboard_api_token.get_secret_value()
+                if settings.dashboard_api_token
+                else None
+            ),
+            session_secret=settings.session_secret,
+            sessions_file=settings.data_dir / "sessions.json",
             public_origin=settings.base_url,
             allowed_hosts=frozenset(
                 [*settings.dashboard_hosts, (settings.public_url.host or "").lower()]

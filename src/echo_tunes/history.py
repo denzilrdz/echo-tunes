@@ -203,6 +203,11 @@ class History:
             self._db.execute("VACUUM")  # really gone from the file, not just marked free
         return int(removed)
 
+    def has_device(self, device: str) -> bool:
+        with self._lock:
+            row = self._db.execute("SELECT 1 FROM plays WHERE device=? LIMIT 1", (device,))
+            return row.fetchone() is not None
+
     def count(self) -> int:
         with self._lock:
             return int(self._db.execute("SELECT COUNT(*) FROM plays").fetchone()[0])

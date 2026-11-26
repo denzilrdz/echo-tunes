@@ -28,7 +28,16 @@ Two monitors cover everything:
    Goes down when YouTube stops serving audio (the usual sign that yt-dlp needs an update),
    or when the server is down.
 
-If you set a dashboard password, add it under *Authentication → HTTP Basic Auth* (user `admin`).
+If you set a dashboard password, also set `ECHO_TUNES_DASHBOARD_API_TOKEN` (e.g.
+`openssl rand -hex 32`) and add it to the private monitor under *Headers*:
+
+```json
+{ "Authorization": "Bearer <your token>" }
+```
+
+The token skips the password checks, so many wrong passwords on your network can't make the
+monitor fail. HTTP Basic Auth (user `admin`, the password) still works, but waits its turn
+behind other password checks.
 
 ### What `/api/health` says
 
@@ -60,7 +69,8 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets: ["<server>:8081"]
-    # basic_auth: { username: admin, password: <ECHO_TUNES_DASHBOARD_PASSWORD> }
+    # With a dashboard password, use the API token (ECHO_TUNES_DASHBOARD_API_TOKEN):
+    # authorization: { type: Bearer, credentials: <your token> }
 ```
 
 ### Metrics
@@ -118,6 +128,9 @@ increase(echo_tunes_alexa_rejected_total[1h])
 rest:
   - resource: http://<server>:8081/api/now
     scan_interval: 15
+    # With a dashboard password:
+    # headers:
+    #   Authorization: "Bearer <ECHO_TUNES_DASHBOARD_API_TOKEN>"
     sensor:
       - name: "echo-tunes now playing"
         value_template: >-

@@ -200,6 +200,14 @@ async def test_play_in_browser_and_history(skill: Skill) -> None:
     assert c.post("/api/play/played", json={"track": TRACK}).status_code == 200
     plays = c.get("/api/history").json()["plays"]
     assert plays[0]["title"] == "Picked"
+    # Audit: browser plays showed as "Echo ...rowser" and couldn't be filtered.
+    assert plays[0]["device"] == "browser" and plays[0]["device_name"] == "Web player"
+    assert {"id": "browser", "name": "Web player"} in c.get("/api/devices").json()
+    mine = c.get("/api/history", params={"device": "browser"}).json()["plays"]
+    assert [p["title"] for p in mine] == ["Picked"]
+    assert c.get("/api/stats", params={"device": "browser"}).json()["plays"] == 1
+    bad = c.post("/api/play/echo", json={"device": "browser", "mode": "now", "tracks": [TRACK]})
+    assert bad.status_code == 404
     assert c.post("/api/history/clear", json={}).json() == {"removed": 1}
     assert c.get("/api/history").json()["plays"] == []
 
