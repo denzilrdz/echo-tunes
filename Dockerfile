@@ -4,7 +4,7 @@
 
 ARG PYTHON_IMAGE=python:3.13.18-slim-trixie
 
-FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.10 AS uv
 FROM denoland/deno:bin-2.9.8 AS deno
 
 FROM ${PYTHON_IMAGE} AS build
