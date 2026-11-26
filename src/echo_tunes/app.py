@@ -17,6 +17,7 @@ from echo_tunes.alexa.skill import Skill, SkillConfig
 from echo_tunes.alexa.verify import MAX_BODY_BYTES, AlexaVerifier, RequestRejected
 from echo_tunes.config import Settings
 from echo_tunes.health import memory_mb
+from echo_tunes.music import account
 from echo_tunes.music.catalog import YTMusicCatalog
 from echo_tunes.music.resolver import Resolver
 from echo_tunes.player.store import StateStore
@@ -55,7 +56,17 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             radio_length=settings.radio_length,
             max_queue=settings.max_queue,
         ),
-        catalog=YTMusicCatalog(settings.language, settings.location),
+        catalog=YTMusicCatalog(
+            *account.make_client(
+                settings.data_dir,
+                settings.language,
+                settings.location,
+                account.load_client(
+                    settings.data_dir, settings.google_client_id, settings.google_client_secret
+                ),
+            ),
+            send_history=settings.send_history,
+        ),
         resolver=resolver,
         store=store,
     )
