@@ -145,7 +145,7 @@ async def test_setup_checks_and_test_play(skill: Skill) -> None:
 def test_dns_rebinding_and_cross_site_reads_are_refused(skill: Skill) -> None:
     from echo_tunes.dashboard import host_allowed
 
-    for ok in ("127.0.0.1:8081", "192.168.1.5", "[::1]:8081", "localhost:8081", "echo.ts.net:8443"):
+    for ok in ("127.0.0.1:8081", "203.0.113.5", "[::1]:8081", "localhost:8081", "echo.ts.net:8443"):
         assert host_allowed(ok, frozenset({"echo.ts.net"})), ok
     for bad in ("evil.example.com", "evil.example.com:8081", "", "127.0.0.1.evil.com"):
         assert not host_allowed(bad, frozenset({"echo.ts.net"})), bad
