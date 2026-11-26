@@ -86,6 +86,8 @@ def test_rejects_missing_headers() -> None:
         "https://s3.amazonaws.com/echo.api/../evil/cert.pem",
         "https://s3.amazonaws.com/echo.api/cert.pem?x=1",
         "https://user@s3.amazonaws.com/echo.api/cert.pem",
+        "https://s3.amazonaws.com/echo.api/anything-else.pem",
+        "https://s3.amazonaws.com/echo.api/echo-api-cert-1.pem.exe",
     ],
 )
 def test_cert_url_rules(url: str) -> None:
@@ -112,10 +114,30 @@ def test_certificate_cache_is_bounded() -> None:
     verifier = make(amazon)
     for i in range(50):
         body = body_for()
-        verifier.verify(amazon.headers(body, f"https://s3.amazonaws.com/echo.api/c{i}.pem"), body)
+        verifier.verify(
+            amazon.headers(body, f"https://s3.amazonaws.com/echo.api/echo-api-cert-{i}.pem"), body
+        )
     assert len(verifier._certs) <= 4
     # and a repeated URL is served from the cache
     before = amazon.fetches
     body = body_for()
-    verifier.verify(amazon.headers(body, "https://s3.amazonaws.com/echo.api/c49.pem"), body)
+    verifier.verify(
+        amazon.headers(body, "https://s3.amazonaws.com/echo.api/echo-api-cert-49.pem"), body
+    )
     assert amazon.fetches == before
+
+
+def test_failed_certificate_urls_are_not_fetched_again() -> None:
+    amazon = FakeAmazon()
+    calls = []
+
+    def broken(url: str) -> bytes:
+        calls.append(url)
+        raise RequestRejected("certificate download failed (404)")
+
+    verifier = AlexaVerifier([SKILL_ID], store=amazon.store, fetch=broken)
+    for _ in range(5):
+        body = body_for()
+        with pytest.raises(RequestRejected):
+            verifier.verify(amazon.headers(body), body)
+    assert len(calls) == 1

@@ -32,6 +32,18 @@ class LoginError(Exception):
     pass
 
 
+def timeout_session(seconds: float = 8.0) -> Any:
+    """A requests session whose calls give up after `seconds` (ytmusicapi sets none)."""
+    import requests
+
+    class TimeoutSession(requests.Session):
+        def request(self, *args: Any, **kwargs: Any) -> Any:
+            kwargs.setdefault("timeout", seconds)
+            return super().request(*args, **kwargs)
+
+    return TimeoutSession()
+
+
 @dataclass(frozen=True, slots=True)
 class ClientSecrets:
     client_id: str
@@ -80,11 +92,17 @@ def make_client(
     if oauth.exists() and client is not None:
         creds = OAuthCredentials(client.client_id, client.client_secret)
         return YTMusic(
-            str(oauth), language=language, location=location, oauth_credentials=creds
+            str(oauth),
+            language=language,
+            location=location,
+            oauth_credentials=creds,
+            requests_session=timeout_session(),
         ), True
     if browser.exists():
-        return YTMusic(str(browser), language=language, location=location), True
-    return YTMusic(language=language, location=location), False
+        return YTMusic(
+            str(browser), language=language, location=location, requests_session=timeout_session()
+        ), True
+    return YTMusic(language=language, location=location, requests_session=timeout_session()), False
 
 
 # --- login flows (used by the CLI) ---------------------------------------------------------------
@@ -163,9 +181,12 @@ def login_browser(data_dir: Path, headers_raw: str) -> None:
     (data_dir / OAUTH_FILE).unlink(missing_ok=True)
 
 
-def logout(data_dir: Path) -> bool:
+def logout(data_dir: Path, *, forget_client: bool = False) -> bool:
+    """Remove the sign-in. The OAuth client is kept (so the next login doesn't ask for it)
+    unless `forget_client` is set."""
     removed = False
-    for name in (OAUTH_FILE, CLIENT_FILE, BROWSER_FILE):
+    names = (OAUTH_FILE, BROWSER_FILE, CLIENT_FILE) if forget_client else (OAUTH_FILE, BROWSER_FILE)
+    for name in names:
         path = data_dir / name
         if path.exists():
             path.unlink()

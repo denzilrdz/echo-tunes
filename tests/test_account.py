@@ -85,12 +85,14 @@ def test_browser_login_needs_cookies(tmp_path: Path) -> None:
         account.login_browser(tmp_path, "user-agent: x\n")
 
 
-def test_logout_removes_everything(tmp_path: Path) -> None:
+def test_logout_keeps_the_client_unless_asked(tmp_path: Path) -> None:
     for name in (account.OAUTH_FILE, account.CLIENT_FILE, account.BROWSER_FILE):
         (tmp_path / name).write_text("{}")
     assert account.logout(tmp_path)
-    assert not list(tmp_path.iterdir())
+    assert [p.name for p in tmp_path.iterdir()] == [account.CLIENT_FILE]
     assert not account.logout(tmp_path)
+    assert account.logout(tmp_path, forget_client=True)
+    assert not list(tmp_path.iterdir())
 
 
 def test_settings_client_wins_over_saved_file(tmp_path: Path) -> None:

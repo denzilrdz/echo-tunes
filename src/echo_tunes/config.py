@@ -6,6 +6,7 @@ Nothing here knows or cares where the server runs: the only link to the outside 
 
 from __future__ import annotations
 
+import os
 import secrets
 from functools import cached_property
 from pathlib import Path
@@ -128,10 +129,20 @@ class Settings(BaseSettings):
     def stream_secret(self) -> bytes:
         """Key that signs stream links. Created on first start and kept in the data folder."""
         path = self.data_dir / "stream.key"
-        if path.exists():
-            return path.read_bytes()
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        key = secrets.token_bytes(32)
-        path.touch(mode=0o600)
-        path.write_bytes(key)
+        if not path.exists():
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            # Written to a temporary file and renamed, so a crash can never leave a short key.
+            tmp = path.with_suffix(".tmp")
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(secrets.token_bytes(32))
+                f.flush()
+                os.fsync(f.fileno())
+            tmp.replace(path)
+        key = path.read_bytes()
+        if len(key) != 32:
+            raise ValueError(
+                f"{path} is damaged ({len(key)} bytes, expected 32). Delete it and restart: "
+                "a new key is created (links already handed to an Echo stop working)."
+            )
         return key

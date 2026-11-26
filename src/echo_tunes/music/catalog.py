@@ -6,7 +6,7 @@ import asyncio
 import difflib
 import logging
 import re
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -16,6 +16,9 @@ from echo_tunes.tokens import is_video_id
 log = logging.getLogger(__name__)
 
 LIBRARY_LIMIT = 200  # songs taken from a playlist or liked songs
+# Alexa gives a skill about 8 seconds to answer, so no YouTube Music call may take longer than
+# this (the HTTP session also has its own timeout, see account.TimeoutSession).
+CALL_TIMEOUT = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,8 +107,9 @@ class YTMusicCatalog:
         self._yt = client
         self._signed_in = signed_in
         self._send_history = send_history and signed_in
-        # ytmusicapi shares one HTTP session; calls are short, so serialise them.
-        self._lock = threading.Lock()
+        # Its own small thread pool: a slow YouTube never starves other work, and calls run
+        # side by side instead of queueing behind one another.
+        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ytmusic")
         self._searches: BoundedTTLCache[str, Track] = BoundedTTLCache(256, ttl=3600)
         self._lists: BoundedTTLCache[str, list[dict[str, Any]]] = BoundedTTLCache(4, ttl=600)
 
@@ -157,8 +161,13 @@ class YTMusicCatalog:
         if not mixes:
             return None
         wanted = name if "mix" in name.lower() else f"{name} mix"
-        i = best_match(wanted, [m["title"] for m in mixes], cutoff=0.4)
-        chosen = mixes[i if i is not None else 0]
+        titles = [m["title"] for m in mixes]
+        i = best_match(wanted, titles, cutoff=0.6)
+        if i is None:
+            if normalise(name) not in ("mix", "my mix", "supermix", "my supermix"):
+                return None  # asked for a specific mix that isn't there: say so
+            i = next((k for k, t in enumerate(titles) if "supermix" in t.lower()), 0)
+        chosen = mixes[i]
         data = await self._call("get_watch_playlist", playlistId=chosen["playlistId"], limit=50)
         return Collection(chosen["title"], _tracks((data or {}).get("tracks")))
 
@@ -191,8 +200,10 @@ class YTMusicCatalog:
         return cached
 
     async def _call(self, method: str, *args: Any, **kwargs: Any) -> Any:
-        def run() -> Any:
-            with self._lock:
-                return getattr(self._yt, method)(*args, **kwargs)
+        loop = asyncio.get_running_loop()
+        fn = getattr(self._yt, method)
+        async with asyncio.timeout(CALL_TIMEOUT):
+            return await loop.run_in_executor(self._pool, lambda: fn(*args, **kwargs))
 
-        return await asyncio.to_thread(run)
+    def close(self) -> None:
+        self._pool.shutdown(wait=False, cancel_futures=True)

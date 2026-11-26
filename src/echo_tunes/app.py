@@ -103,7 +103,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             test_play=lambda: _test_play(skill),
         ),
     )
-    return services, [resolver, store, history, client]
+    return services, [resolver, store, history, client, services.verifier, catalog]
 
 
 async def _setup_checks(
@@ -206,9 +206,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
                 return JSONResponse({"error": "bad request"}, status_code=400)
         s = svc(request)
         try:
-            envelope = await asyncio.to_thread(
-                s.verifier.verify, dict(request.headers), bytes(body)
-            )
+            envelope = await s.verifier.verify_async(dict(request.headers), bytes(body))
         except RequestRejected as exc:
             log.warning("rejected a request to /alexa: %s", exc)
             METRICS.alexa_rejected.labels(rejection_reason(str(exc))).inc()

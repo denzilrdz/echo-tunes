@@ -14,6 +14,7 @@ from .conftest import DEVICE, directives, event, intent
 
 async def played(skill: Skill) -> None:
     resp = await skill.handle(intent("PlayIntent", "mercedes"))
+    await skill.wait_background()
     token = directives(resp)[0]["audioItem"]["stream"]["token"]
     await skill.handle(event("AudioPlayer.PlaybackStarted", token, offsetInMilliseconds=0))
 

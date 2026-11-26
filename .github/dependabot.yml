@@ -33,6 +33,15 @@ updates:
     groups:
       python:
         patterns: ["*"]
+  - package-ecosystem: docker-compose
+    directories: ["/examples/*"]
+    schedule:
+      interval: monthly
+    labels: [dependencies, docker]
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
   - package-ecosystem: docker
     directory: /
     schedule:

@@ -66,11 +66,7 @@ class Skill:
         request = envelope.get("request") or {}
         kind = str(request.get("type", ""))
         device = _device_id(envelope)
-        lock = self._locks.get(device)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._locks[device] = lock
-        async with lock:
+        async with self._lock_for(device):
             state = self.store.get(device)
             try:
                 response = await self._dispatch(kind, request, envelope, state, device)
@@ -93,7 +89,7 @@ class Skill:
                 end_session=False,
             )
         if kind == "IntentRequest":
-            return await self._intent(request, envelope, state)
+            return await self._intent(request, envelope, state, device)
         if kind.startswith("AudioPlayer."):
             return await self._audio_event(
                 kind.removeprefix("AudioPlayer."), request, state, device
@@ -110,7 +106,7 @@ class Skill:
 
     # --- voice intents ------------------------------------------------------------------------
     async def _intent(
-        self, request: dict[str, Any], envelope: dict[str, Any], state: PlayerState
+        self, request: dict[str, Any], envelope: dict[str, Any], state: PlayerState, device: str
     ) -> r.Response:
         intent = request.get("intent") or {}
         name = str(intent.get("name", ""))
@@ -123,7 +119,9 @@ class Skill:
                     return r.build(
                         "What should I play?", reprompt="Say a song or artist.", end_session=False
                     )
-                return await self._start(query, state, radio_intro=name == "PlayRadioIntent")
+                return await self._start(
+                    query, state, device, radio_intro=name == "PlayRadioIntent"
+                )
             case "PlayLikedIntent" | "PlayPlaylistIntent" | "PlayMixIntent":
                 return await self._start_collection(name, intent, state)
             case "LikeIntent":
@@ -165,7 +163,9 @@ class Skill:
             case _:
                 return r.build()
 
-    async def _start(self, query: str, state: PlayerState, *, radio_intro: bool) -> r.Response:
+    async def _start(
+        self, query: str, state: PlayerState, device: str, *, radio_intro: bool
+    ) -> r.Response:
         try:
             track = await self.catalog.search_song(query)
         except Exception:
@@ -175,17 +175,40 @@ class Skill:
         if track is None:
             return r.build(f"Sorry, I couldn't find {query}.")
         self.resolver.warm(track.video_id)  # start fetching the audio link right away
-        radio: list[Track] = []
-        try:
-            radio = await self.catalog.radio(track.video_id, self.cfg.radio_length)
-        except Exception as exc:
-            log.warning("radio for %s failed: %s", track.video_id, exc)
-        state.replace([track, *radio], self.cfg.max_queue)
+        state.replace([track], self.cfg.max_queue)
         state.failures = 0
         state.source = f'{"Radio for" if radio_intro else "Asked for"} "{query}"'
         state.source_kind = "radio" if radio_intro else "ask"
+        # Answer Alexa now (it allows ~8 s); the radio that follows is fetched afterwards.
+        self._in_background(self._fill_radio(device, state.rev, track))
         intro = "Starting radio based on" if radio_intro else "Playing"
         return r.build(f"{intro} {track.spoken}.", directives=[self._play(state, 0)])
+
+    async def _fill_radio(self, device: str, rev: int, seed: Track) -> None:
+        try:
+            radio = await self.catalog.radio(seed.video_id, self.cfg.radio_length)
+        except Exception as exc:
+            log.warning("radio for %s failed: %s", seed.video_id, exc)
+            return
+        async with self._lock_for(device):
+            state = self.store.get(device)
+            if state.rev != rev:  # something else was asked for meanwhile
+                return
+            state.extend(radio, self.cfg.max_queue)
+            self.store.put(device, state)
+            self._warm_next(state)
+
+    def _lock_for(self, device: str) -> asyncio.Lock:
+        lock = self._locks.get(device)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[device] = lock
+        return lock
+
+    async def wait_background(self) -> None:
+        """Wait for background work (tests use this)."""
+        while self._background:
+            await asyncio.gather(*list(self._background), return_exceptions=True)
 
     async def _start_collection(
         self, name: str, intent: dict[str, Any], state: PlayerState
@@ -284,11 +307,16 @@ class Skill:
                 if idx is not None and track is not None:
                     state.index, state.offset_ms, state.failures = idx, 0, 0
                     self._now(state, playing=True, position_ms=offset)
-                    METRICS.songs_started.inc()
-                    if self.history:
-                        self.history.started(device, track, state.source_of(idx))
+                    # A start part-way through the song is a resume, not a new play.
+                    resumed = offset > 0 and bool(
+                        self.history and self.history.resumed(device, track.video_id)
+                    )
+                    if not resumed:
+                        METRICS.songs_started.inc()
+                        if self.history:
+                            self.history.started(device, track, state.source_of(idx))
+                        self._in_background(self.catalog.played(track.video_id))
                     self._warm_next(state)
-                    self._in_background(self.catalog.played(state.tracks[idx].video_id))
             case "PlaybackStopped":
                 if idx is not None and track is not None:
                     state.index = idx

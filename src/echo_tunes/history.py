@@ -77,6 +77,19 @@ class History:
         if now - self._last_prune > PRUNE_EVERY:
             self.prune()
 
+    def resumed(self, device: str, video_id: str) -> bool:
+        """Reopen the paused row for this song instead of counting a second play."""
+        if not self.enabled:
+            return False
+        with self._lock:
+            cur = self._db.execute(
+                "UPDATE plays SET status='playing', ended=NULL"
+                " WHERE id = (SELECT id FROM plays WHERE device=? ORDER BY started DESC LIMIT 1)"
+                " AND video_id=? AND status='stopped'",
+                (device, video_id),
+            )
+            return cur.rowcount > 0
+
     def ended(self, device: str, video_id: str, status: str, offset_ms: int | None) -> None:
         """Close the open row for this song (finished, stopped/paused or failed)."""
         if not self.enabled or status not in STATUSES:

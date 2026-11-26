@@ -15,7 +15,9 @@ class PlayerState:
     index: int = 0
     shuffle: bool = False
     loop: bool = False
-    rev: int = 0  # bumped whenever the queue is replaced, so stale Alexa tokens are ignored
+    # Bumped only when the queue is *replaced* (a new request), so tokens from an old queue are
+    # ignored. Reordering (shuffle) or trimming keeps it: tokens are matched by song ID.
+    rev: int = 0
     offset_ms: int = 0  # where playback stopped, for "resume"
     failures: int = 0  # songs that failed to play in a row
     # For the dashboard and history: where the queue came from and what the Echo is doing.
@@ -43,10 +45,13 @@ class PlayerState:
         parts = token.split(":")
         if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
             return None
-        rev, i = int(parts[0]), int(parts[1])
-        if rev != self.rev or i >= len(self.tracks) or self.tracks[i].video_id != parts[2]:
+        rev, i, video = int(parts[0]), int(parts[1]), parts[2]
+        if rev != self.rev:
             return None
-        return i
+        if i < len(self.tracks) and self.tracks[i].video_id == video:
+            return i
+        # Shuffled or trimmed since: find the song by ID (songs in a queue are unique).
+        return next((j for j, t in enumerate(self.tracks) if t.video_id == video), None)
 
     # --- queue --------------------------------------------------------------------------
     @property
@@ -75,7 +80,6 @@ class PlayerState:
             if drop:
                 self.tracks = self.tracks[drop:]
                 self.index -= drop
-                self.rev += 1
             self.tracks = self.tracks[:max_len]
         return len(added)
 
@@ -98,7 +102,6 @@ class PlayerState:
         rest = self.tracks[self.index + 1 :]
         random.shuffle(rest)
         self.tracks[self.index + 1 :] = rest
-        self.rev += 1
 
     # --- storage ------------------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
