@@ -131,14 +131,14 @@ private as long as you don't publish 8081 to the internet yourself.
 | `ECHO_TUNES_DASHBOARD_SESSION_DAYS` | `180` | How long a device stays signed in. `0` = until you sign out or change the password. |
 | `ECHO_TUNES_DASHBOARD_API_TOKEN` | (none) | Bearer token for monitors and scripts (at least 32 characters). Skips the password checks. |
 | `ECHO_TUNES_HISTORY_DAYS` | `15` | Days of play history to keep. `0` keeps none (and deletes what's there). |
-| `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `BEWY4D23ORJQ=Living room,A6TA55XMCKTY=Kitchen`. |
+| `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `LIVINGROOM01=Living room,K1TCHEN0ECHO=Kitchen`. |
 | `ECHO_TUNES_EXPERIMENTAL_SKIP` | `false` | Let the player try to skip the song playing on an Echo (see [Player](#player)). |
 
 ### Naming your Echos
 
 Alexa only tells a skill a long, random device ID. The dashboard shows its last 12 characters
-(for example *Echo …4D23ORJQ*). Copy that from the Now playing tab or the History Echo filter and
-set `ECHO_TUNES_DEVICE_NAMES=BEWY4D23ORJQ=Living room`, then restart.
+(for example *Echo …NGROOM01*). Copy that from the Now playing tab or the History Echo filter and
+set `ECHO_TUNES_DEVICE_NAMES=LIVINGROOM01=Living room`, then restart.
 
 ## History and privacy
 

@@ -21,8 +21,13 @@ uv run ruff check src tests scripts
 uv run zizmor --persona=auditor .github/ && uv run actionlint   # if you changed a workflow
 uv run mypy
 uv run pytest
-scripts/check-private-info.sh   # no IP addresses, tailnet names or real IDs
+scripts/check-private-info.sh   # no IP addresses, tailnet names or real IDs (+ .private-ids)
 ```
+
+`check-private-info.sh` also reads an optional `.private-ids` file in the repository root:
+your own values that must never be committed (the ends of your Echos' device IDs, your
+tailnet or domain name), one per line, `#` for comments. It's in `.gitignore`, so it stays
+on your machine; the script fails if any tracked file contains one of them (case-insensitive).
 
 Fuzzing (Linux only, Atheris): `uv sync --group fuzz && uv run python fuzz/fuzz_tokens.py
 -max_total_time=60`. CI fuzzes weekly; see `fuzz/README.md`.

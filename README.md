@@ -216,7 +216,7 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_DASHBOARD_SESSION_DAYS`    | `180`      | Days a phone or browser stays signed in to the dashboard (`0` = until you sign out). |
 | `ECHO_TUNES_DASHBOARD_API_TOKEN`       | (none)     | Bearer token (32+ random characters) for monitors and scripts; skips the password checks ([how](docs/MONITORING.md)). |
 | `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |
-| `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `BEWY4D23ORJQ=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
+| `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `LIVINGROOM01=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
 | `ECHO_TUNES_EXPERIMENTAL_SKIP`         | `false`    | Let the player try to skip the song playing on an Echo ([how it works](docs/DASHBOARD.md#player)). |
 | `ECHO_TUNES_APP_NAME`                  | `echo-tunes` | Name of the installed phone app.                                          |
 | `ECHO_TUNES_APP_COLOR`                 | `#1f6feb`  | Its theme colour (`#rrggbb`).                                               |
