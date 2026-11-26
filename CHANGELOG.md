@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Optional YouTube Music sign-in with `echo-tunes login` (Google device sign-in with your own
+  OAuth client, or `--browser` with pasted headers) and `echo-tunes logout`. Tokens are stored
+  in the data folder with owner-only permissions; audio is still fetched without the account.
+- Voice commands for your library: play my liked songs, play my playlist …, play my supermix /
+  discover mix / replay mix, and like this song. Playlist names are matched loosely.
+- Optional `ECHO_TUNES_SEND_HISTORY` adds played songs to your YouTube history.
+- `doctor` reports the sign-in status and checks the library can be read.
+- `scripts/build_voice_model.py` generates every locale's voice model from one definition.
+
+### Fixed
+
+- `/alexa` now caps the body size while reading it, so a chunked request without
+  `Content-Length` can't be read without limit.
+- CI's secret scan works on pull requests from Dependabot.
+
 - Alexa skill endpoint (`POST /alexa`) with Amazon request verification: certificate URL rules,
   certificate chain and name, RSA-SHA256 body signature, 150-second timestamp window and skill
   ID check, with a bounded certificate cache and download timeout.

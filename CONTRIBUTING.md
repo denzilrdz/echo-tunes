@@ -40,8 +40,9 @@ Or build the image: `docker build -t echo-tunes:dev .`
   (use `BoundedTTLCache`). `tests/test_memory.py` checks this; don't loosen it to make a test pass.
 - **Keep it small.** echo-tunes aims to be the simple option. Big features are better discussed
   in an issue first.
-- **Voice model changes**: edit `skill-package/interactionModels/custom/en-US.json` and copy it
-  to the other English locales (a test checks they match). New languages are welcome as new files.
+- **Voice model changes**: edit `scripts/build_voice_model.py`, then run
+  `uv run python scripts/build_voice_model.py` (a test fails if the generated files are stale).
+  New languages are welcome.
 - **Commits** follow [Conventional Commits](https://www.conventionalcommits.org):
   `feat: …`, `fix: …`, `docs: …`, `chore(deps): …`.
 - Add a line to `CHANGELOG.md` under `[Unreleased]` for user-visible changes.
