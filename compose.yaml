@@ -1,6 +1,6 @@
 # echo-tunes on its own, listening on port 8080 of this machine only.
 # Put your own HTTPS reverse proxy in front of it, or use one of the ready-made setups in
-# examples/ (Tailscale Funnel, Cloudflare Tunnel, or Caddy on a server with a public IP).
+# examples/ (Caddy on a server with a public IP, Cloudflare Tunnel, or Tailscale Funnel).
 services:
   echo-tunes:
     image: ghcr.io/denzilrdz/echo-tunes:0.2.1

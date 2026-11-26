@@ -2,7 +2,7 @@
 
 Served on its own port (``ECHO_TUNES_DASHBOARD_PORT``, default 8081), separate from the public
 port that Amazon and the Echo use. Keep this port private: bind it to localhost or your LAN,
-or publish it only inside a VPN (e.g. Tailscale Serve, not Funnel). An optional password
+or publish it only inside your LAN or a VPN (WireGuard, Tailscale Serve, ...). An optional password
 (``ECHO_TUNES_DASHBOARD_PASSWORD``, HTTP Basic, user ``admin``) adds a second lock.
 
 Read-only: nothing here can change what plays.
