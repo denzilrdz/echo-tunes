@@ -159,8 +159,10 @@ class AlexaVerifier:
         and only if fewer than MAX_PENDING_DOWNLOADS are already waiting.
         """
         url, signature, envelope = self._precheck(headers, body)
-        if self._certs.get(url) is not None:
-            return self._finish(url, signature, body, envelope)
+        chain = self._certs.get(url)  # read once: it can't expire between check and use
+        if chain is not None:
+            # CPU only (chain check + RSA): never downloads, so safe on the event loop.
+            return self._check_signed(chain, signature, body, envelope)
         if self._pending >= MAX_PENDING_DOWNLOADS:
             raise RequestRejected("too many certificate downloads at once")
         self._pending += 1
@@ -210,7 +212,18 @@ class AlexaVerifier:
     def _finish(
         self, url: str, signature: str, body: bytes, envelope: dict[str, Any]
     ) -> dict[str, Any]:
-        leaf = self._signing_cert(url)
+        """Blocking: may download the certificate (worker threads only)."""
+        return self._check_signed(self._load_chain(url), signature, body, envelope)
+
+    def _check_signed(
+        self,
+        chain: list[x509.Certificate],
+        signature: str,
+        body: bytes,
+        envelope: dict[str, Any],
+    ) -> dict[str, Any]:
+        """The certificate is trusted and signed this exact body. No I/O."""
+        leaf = self._trusted_leaf(chain)
         try:
             sig = base64.b64decode(signature, validate=True)
         except (binascii.Error, ValueError) as exc:
@@ -227,23 +240,28 @@ class AlexaVerifier:
         self._check_skill(envelope)
         return envelope
 
-    def _signing_cert(self, url: str) -> x509.Certificate:
+    def _load_chain(self, url: str) -> list[x509.Certificate]:
+        """The cached chain, or download it. Only a chain that is trusted right now is cached
+        (an untrusted one is remembered as failed instead), so the cache holds Amazon's only."""
         chain = self._certs.get(url)
-        if chain is None:
-            failed = self._failed.get(url)
-            if failed is not None:
-                raise RequestRejected(failed)
-            try:
-                chain = x509.load_pem_x509_certificates(self._fetch(url))
-                if not chain:
-                    raise RequestRejected("certificate chain is empty")
-            except (ValueError, RequestRejected, httpx.HTTPError) as exc:
-                reason = (
-                    str(exc) if isinstance(exc, RequestRejected) else "certificate download failed"
-                )
-                self._failed.set(url, reason)
-                raise RequestRejected(reason) from exc
-            self._certs.set(url, chain)
+        if chain is not None:
+            return chain
+        failed = self._failed.get(url)
+        if failed is not None:
+            raise RequestRejected(failed)
+        try:
+            chain = x509.load_pem_x509_certificates(self._fetch(url))
+            if not chain:
+                raise RequestRejected("certificate chain is empty")
+            self._trusted_leaf(chain)
+        except (ValueError, RequestRejected, httpx.HTTPError) as exc:
+            reason = str(exc) if isinstance(exc, RequestRejected) else "certificate download failed"
+            self._failed.set(url, reason)
+            raise RequestRejected(reason) from exc
+        self._certs.set(url, chain)
+        return chain
+
+    def _trusted_leaf(self, chain: list[x509.Certificate]) -> x509.Certificate:
         # Checked on every request (not just at download) so expiry is noticed.
         verifier = (
             PolicyBuilder()

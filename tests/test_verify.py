@@ -181,6 +181,51 @@ async def test_cached_certificate_requests_skip_a_backlog_of_fake_ones() -> None
         verifier.close()
 
 
+async def test_a_cache_entry_expiring_mid_request_never_downloads_on_the_event_loop() -> None:
+    """Security review: the fast path looked the certificate up, then looked it up again; if
+    it expired in between, the second lookup downloaded it on the event loop."""
+    import threading
+
+    amazon = FakeAmazon()
+    verifier = make(amazon)
+    body = body_for()
+    verifier.verify(amazon.headers(body), body)
+    cache = verifier._certs
+    real_get = cache.get
+    lookups = [0]
+
+    def get_once(key: str):  # type: ignore[no-untyped-def]
+        lookups[0] += 1
+        found = real_get(key)
+        cache.pop(key)  # gone right after this lookup, as if it just expired
+        return found
+
+    cache.get = get_once  # type: ignore[method-assign]
+    loop_thread = threading.get_ident()
+    fetched_on: list[int] = []
+    orig_fetch = amazon.fetch
+
+    def fetch(url: str) -> bytes:
+        fetched_on.append(threading.get_ident())
+        return orig_fetch(url)
+
+    verifier._fetch = fetch
+    body = body_for()
+    assert (await verifier.verify_async(amazon.headers(body), body))["request"]
+    assert loop_thread not in fetched_on and lookups[0] == 1
+    verifier.close()
+
+
+def test_an_untrusted_certificate_is_not_cached() -> None:
+    amazon = FakeAmazon(san="evil.example.com")
+    verifier = make(amazon)
+    for _ in range(3):
+        body = body_for()
+        with pytest.raises(RequestRejected, match="not trusted"):
+            verifier.verify(amazon.headers(body), body)
+    assert len(verifier._certs) == 0 and amazon.fetches == 1  # remembered as failed
+
+
 async def test_requests_for_another_skill_never_download_a_certificate() -> None:
     amazon = FakeAmazon()
     verifier = make(amazon, ["amzn1.ask.skill.someone-else"])
