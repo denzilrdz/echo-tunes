@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
@@ -53,7 +52,7 @@ async def run_checks(
             f"Public address {settings.base_url}, {len(settings.skill_ids)} skill ID(s)",
         ),
         _data_folder(settings),
-        _deno(),
+        await _deno(),
         _ytdlp(),
     ]
     checks.append(await _search(search))
@@ -98,14 +97,20 @@ def _data_folder(settings: Settings) -> Check:
         return Check("Data folder", "fail", str(exc), "Check the volume's owner (uid 10001)")
 
 
-def _deno() -> Check:
+async def _deno() -> Check:
+    name = "Deno (JavaScript for yt-dlp)"
     deno = shutil.which("deno")
     if not deno:
-        return Check(
-            "Deno (JavaScript for yt-dlp)", "fail", "not found", "Use the official Docker image"
+        return Check(name, "fail", "not found", "Use the official Docker image")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            deno, "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
         )
-    out = subprocess.run([deno, "--version"], capture_output=True, text=True, check=False)  # noqa: S603
-    return Check("Deno (JavaScript for yt-dlp)", "ok", out.stdout.split("\n")[0])
+        async with asyncio.timeout(10):
+            out, _ = await proc.communicate()
+    except (TimeoutError, OSError) as exc:
+        return Check(name, "fail", f"didn't answer: {type(exc).__name__}")
+    return Check(name, "ok", out.decode(errors="replace").split("\n")[0])
 
 
 def _ytdlp() -> Check:

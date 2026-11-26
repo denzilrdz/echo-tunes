@@ -94,3 +94,17 @@ def test_persists_on_disk(tmp_path: Path) -> None:
     h.started("echo-1", song(1), "x")
     h.close()
     assert History(tmp_path / "h.sqlite3", 15).count() == 1
+
+
+def test_pause_and_resume_is_one_play() -> None:
+    h, clock = make()
+    h.started("echo-1", song(1), "x")
+    clock.t += 30
+    h.ended("echo-1", song(1).video_id, "stopped", 30_000)
+    clock.t += 600
+    assert h.resumed("echo-1", song(1).video_id)
+    clock.t += 60
+    h.ended("echo-1", song(1).video_id, "finished", 200_000)
+    [row] = h.recent()
+    assert row["status"] == "finished" and h.count() == 1
+    assert not h.resumed("echo-1", song(2).video_id)  # a different song is a new play

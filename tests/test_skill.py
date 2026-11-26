@@ -5,11 +5,13 @@ import asyncio
 from echo_tunes import tokens
 from echo_tunes.alexa.skill import Skill
 
-from .conftest import DEVICE, SECRET, directives, envelope, event, intent
+from .conftest import DEVICE, SECRET, directives, envelope, event, intent, song
 
 
 async def start(skill: Skill, query: str = "tum hi ho") -> dict:
-    return await skill.handle(intent("PlayIntent", query))
+    resp = await skill.handle(intent("PlayIntent", query))
+    await skill.wait_background()  # the radio is fetched after answering Alexa
+    return resp
 
 
 async def test_launch_asks_what_to_play(skill: Skill) -> None:
@@ -173,3 +175,58 @@ def _with_slot(name: str, slot: str, value: str) -> dict:  # type: ignore[type-a
     env = intent(name)
     env["request"]["intent"]["slots"] = {slot: {"name": slot, "value": value}}
     return env
+
+
+async def test_shuffle_keeps_the_music_going(skill: Skill) -> None:
+    """Review finding: shuffling made the playing song's token stale, so nothing got queued."""
+    resp = await start(skill)
+    token = directives(resp)[0]["audioItem"]["stream"]["token"]
+    await skill.handle(event("AudioPlayer.PlaybackStarted", token))
+    await skill.handle(intent("AMAZON.ShuffleOnIntent"))
+    resp = await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", token))
+    assert directives(resp), "the next song must still be queued after shuffling"
+    assert directives(resp)[0]["playBehavior"] == "ENQUEUE"
+    # and the playing song's own events still count
+    await skill.handle(event("AudioPlayer.PlaybackStopped", token, offsetInMilliseconds=5_000))
+    assert skill.store.get(DEVICE).offset_ms == 5_000
+
+
+async def test_trimming_a_long_queue_keeps_tokens_valid(skill: Skill) -> None:
+    from echo_tunes.player.state import PlayerState
+
+    s = PlayerState()
+    s.replace([song(i) for i in range(10)], max_len=12)
+    s.index = 8
+    token = s.token(8)
+    s.extend([song(i) for i in range(10, 20)], max_len=12)  # drops played songs from the front
+    assert s.index_from_token(token) == s.index
+
+
+async def test_resume_does_not_count_twice(skill: Skill) -> None:
+    from echo_tunes.history import History
+
+    skill.history = History(":memory:", 15)
+    resp = await start(skill)
+    tok = directives(resp)[0]["audioItem"]["stream"]["token"]
+    await skill.handle(event("AudioPlayer.PlaybackStarted", tok, offsetInMilliseconds=0))
+    await skill.handle(event("AudioPlayer.PlaybackStopped", tok, offsetInMilliseconds=40_000))
+    await skill.handle(event("AudioPlayer.PlaybackStarted", tok, offsetInMilliseconds=40_000))
+    await skill.wait_background()
+    assert skill.history.count() == 1
+    assert list(skill.catalog.history) == ["vid00000001"]  # reported to YouTube once  # type: ignore[attr-defined]
+
+
+async def test_unknown_mix_says_so(skill: Skill) -> None:
+    from echo_tunes.music.catalog import YTMusicCatalog
+
+    class Home:
+        def get_home(self, limit: int = 6) -> list:  # type: ignore[type-arg]
+            return [{"contents": [{"title": "My Supermix", "playlistId": "RDTMAK5uy_x"}]}]
+
+        def get_watch_playlist(self, **kw: object) -> dict:  # type: ignore[type-arg]
+            return {"tracks": []}
+
+    cat = YTMusicCatalog(Home(), signed_in=True)
+    assert await cat.mix("jazz mix") is None
+    found = await cat.mix("supermix")
+    assert found is not None and found.title == "My Supermix"

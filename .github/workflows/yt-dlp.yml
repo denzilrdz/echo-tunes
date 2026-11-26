@@ -1,9 +1,12 @@
 name: yt-dlp
 
 # YouTube changes often and yt-dlp follows within days. Every day, if a newer yt-dlp, its
-# JavaScript challenge solver or ytmusicapi is out, run the tests against it and open (or
-# refresh) a pull request that updates uv.lock. Merging and tagging a release ships it.
-# (Pull requests opened with the built-in token don't trigger CI, so the tests run here.)
+# JavaScript challenge solver or ytmusicapi is out, test it and open (or refresh) a pull request
+# that updates uv.lock. Merging and tagging a release ships it.
+#
+# Supply-chain care: only versions published at least a day ago are taken (a bad release is
+# usually yanked by then), the new code runs in a job that can't write anything, and the job
+# that can open the pull request never runs it.
 on:
   schedule:
     - cron: "17 5 * * *"
@@ -16,22 +19,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  update:
-    name: update yt-dlp
+  test:
+    name: test new versions
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: write # push the deps/yt-dlp branch
-      pull-requests: write # open the pull request
+      contents: read # checkout only: the new packages run without any write access
+    outputs:
+      changed: ${{ steps.lock.outputs.changed }}
+      ytdlp: ${{ steps.lock.outputs.ytdlp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
-      - name: Update the lock file
+      - name: Update the lock file (versions at least a day old)
         id: lock
         run: |
-          uv lock --upgrade-package yt-dlp --upgrade-package yt-dlp-ejs --upgrade-package ytmusicapi
+          cutoff=$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%SZ)
+          uv lock --exclude-newer "$cutoff" \
+            --upgrade-package yt-dlp --upgrade-package yt-dlp-ejs --upgrade-package ytmusicapi
           if git diff --quiet uv.lock; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
@@ -43,11 +50,33 @@ jobs:
         run: |
           uv sync --frozen
           uv run pytest -q
-      - name: Open or refresh the pull request
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.lock.outputs.changed == 'true'
+        with:
+          name: uv-lock
+          path: uv.lock
+          retention-days: 1
+
+  pull-request:
+    name: open pull request
+    needs: test
+    if: needs.test.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # push the deps/yt-dlp branch
+      pull-requests: write # open the pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: uv-lock
+      - name: Open or refresh the pull request
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.lock.outputs.ytdlp }}
+          VERSION: ${{ needs.test.outputs.ytdlp }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -58,5 +87,5 @@ jobs:
           if ! gh pr view deps/yt-dlp --json state --jq .state 2>/dev/null | grep -q OPEN; then
             gh pr create --head deps/yt-dlp --title "chore(deps): update yt-dlp to ${VERSION}" \
               --label yt-dlp --label dependencies \
-              --body "Automated daily update. Tests passed in the workflow run. Merge, then tag a release to ship it."
+              --body "Automated daily update (versions at least a day old). Tests passed in the workflow run. Merge, then tag a release to ship it."
           fi

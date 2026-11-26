@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Shuffle no longer stops the music** after the current song. Reordering or trimming the
+  queue kept a stale token for the playing song, so nothing was queued next, its history row
+  stayed open and resume ignored the position. Tokens are now matched by song within the queue.
+- Play requests answer Alexa after the search only; the radio is fetched afterwards. YouTube
+  Music calls time out after 5 s and no longer wait behind one another, so a slow YouTube can't
+  make Alexa give up (~8 s).
+- Fake `/alexa` requests can no longer tie up shared threads: only Amazon's certificate file
+  names are fetched, failures are remembered for 10 minutes, and verification has its own
+  thread pool.
+- A pause and resume counts as one play (history and YouTube history).
+- A YouTube lookup that times out restarts the worker processes instead of blocking them.
+- The Setup page no longer loads yt-dlp into the server, and runs `deno --version` with a timeout.
+- `docker stop` shuts down cleanly (exit 0) instead of being killed before cleanup.
+- The stream-link key is written atomically; a damaged key stops start-up with a clear message.
+- An unknown mix name says it wasn't found instead of playing another mix.
+
+### Changed
+
+- `echo-tunes logout` keeps the saved Google OAuth client (`--forget-client` removes it too).
+- The daily yt-dlp update tests new versions without write access and only takes versions that
+  are at least a day old.
+- Example compose files pin third-party images by digest (kept current by Dependabot); CI also
+  formats and lints `scripts/`.
+
 ## [0.2.0] - 2026-11-26
 
 ### Added

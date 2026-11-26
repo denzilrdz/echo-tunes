@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import os
+import signal
 import sys
+from collections.abc import Iterator
 
 from pydantic import ValidationError
 
@@ -42,10 +45,17 @@ def serve() -> None:
         for noisy in ("httpx", "httpcore"):
             logging.getLogger(noisy).setLevel(logging.WARNING)
 
+    class Server(uvicorn.Server):
+        # We handle SIGTERM/SIGINT ourselves (below). uvicorn's own handler re-raises the
+        # signal after shutting down, which would kill the process before cleanup runs.
+        @contextlib.contextmanager
+        def capture_signals(self) -> Iterator[None]:
+            yield
+
     async def run() -> None:
         services, closers = build_services(settings)
         servers = [
-            uvicorn.Server(
+            Server(
                 uvicorn.Config(
                     create_app(settings, services),
                     host=settings.host,
@@ -60,7 +70,7 @@ def serve() -> None:
         if settings.dashboard_port and services.dashboard:
             dash = create_dashboard(services.dashboard)
             servers.append(
-                uvicorn.Server(
+                Server(
                     uvicorn.Config(
                         dash,
                         host=settings.dashboard_host,
@@ -87,6 +97,16 @@ def serve() -> None:
                     settings.dashboard_host,
                     settings.dashboard_port,
                 )
+
+        def stop() -> None:
+            for srv in servers:
+                if srv.should_exit:  # a second Ctrl-C: don't wait for open streams
+                    srv.force_exit = True
+                srv.should_exit = True
+
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, stop)
         tasks = [asyncio.create_task(s.serve()) for s in servers]
         try:
             # When one server stops (Ctrl-C / SIGTERM is delivered to it), stop the other too.
@@ -177,10 +197,10 @@ def login(use_browser: bool) -> None:
     print("\nSigned in. Restart echo-tunes to use your library:  docker compose restart echo-tunes")
 
 
-def logout() -> None:
+def logout(forget_client: bool) -> None:
     from echo_tunes.music import account
 
-    removed = account.logout(_settings().data_dir)
+    removed = account.logout(_settings().data_dir, forget_client=forget_client)
     print("Signed out; restart echo-tunes." if removed else "Not signed in.")
 
 
@@ -214,7 +234,10 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="paste headers from a browser instead of Google sign-in",
     )
-    sub.add_parser("logout", help="forget the YouTube Music sign-in")
+    p_logout = sub.add_parser("logout", help="forget the YouTube Music sign-in")
+    p_logout.add_argument(
+        "--forget-client", action="store_true", help="also forget the saved Google OAuth client"
+    )
     args = parser.parse_args(argv)
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     if args.command == "doctor":
@@ -222,6 +245,6 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "login":
         login(args.browser)
     elif args.command == "logout":
-        logout()
+        logout(args.forget_client)
     else:
         serve()

@@ -15,12 +15,15 @@ limit, so a flood of bogus requests can't grow memory or hang the server.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
 import posixpath
+import re
 import warnings
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +41,10 @@ from echo_tunes.cache import BoundedTTLCache
 
 CERT_HOST = "s3.amazonaws.com"
 CERT_PATH_PREFIX = "/echo.api/"
+# Amazon's signing certificates are named echo-api-cert.pem or echo-api-cert-<n>.pem. Accepting
+# only that keeps unsigned requests from making the server download arbitrary S3 objects.
+CERT_FILE = re.compile(r"^/echo\.api/echo-api-cert(-\d{1,4})?\.pem$")
+FAILED_CERT_TTL = 600.0
 SIGNING_NAME = "echo-api.amazon.com"
 MAX_SKEW_SECONDS = 150
 MAX_CERT_BYTES = 64 * 1024
@@ -61,6 +68,7 @@ def check_cert_url(url: str) -> str:
         or (parts.hostname or "").lower() != CERT_HOST
         or port not in (None, 443)
         or not path.startswith(CERT_PATH_PREFIX)
+        or not CERT_FILE.match(path)
         or parts.query
         or parts.fragment
         or parts.username
@@ -116,6 +124,17 @@ class AlexaVerifier:
         self._fetch = fetch
         self._clock = clock
         self._certs: BoundedTTLCache[str, list[x509.Certificate]] = BoundedTTLCache(4, ttl=6 * 3600)
+        # URLs that failed recently are refused at once instead of being fetched again.
+        self._failed: BoundedTTLCache[str, str] = BoundedTTLCache(64, ttl=FAILED_CERT_TTL)
+        # Its own threads: a flood of fake requests can't starve YouTube Music calls.
+        self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="alexa-verify")
+
+    async def verify_async(self, headers: Mapping[str, str], body: bytes) -> dict[str, Any]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._pool, self.verify, headers, body)
+
+    def close(self) -> None:
+        self._pool.shutdown(wait=False, cancel_futures=True)
 
     def verify(self, headers: Mapping[str, str], body: bytes) -> dict[str, Any]:
         """Return the parsed request if genuine; raise RequestRejected otherwise.
@@ -154,12 +173,19 @@ class AlexaVerifier:
     def _signing_cert(self, url: str) -> x509.Certificate:
         chain = self._certs.get(url)
         if chain is None:
+            failed = self._failed.get(url)
+            if failed is not None:
+                raise RequestRejected(failed)
             try:
                 chain = x509.load_pem_x509_certificates(self._fetch(url))
-            except ValueError as exc:
-                raise RequestRejected("certificate is not valid PEM") from exc
-            if not chain:
-                raise RequestRejected("certificate chain is empty")
+                if not chain:
+                    raise RequestRejected("certificate chain is empty")
+            except (ValueError, RequestRejected, httpx.HTTPError) as exc:
+                reason = (
+                    str(exc) if isinstance(exc, RequestRejected) else "certificate download failed"
+                )
+                self._failed.set(url, reason)
+                raise RequestRejected(reason) from exc
             self._certs.set(url, chain)
         # Checked on every request (not just at download) so expiry is noticed.
         verifier = (

@@ -3,7 +3,7 @@
 # Setup: docs/PUBLIC_HTTPS.md#caddy-on-a-server-with-a-public-ip
 services:
   caddy:
-    image: caddy:2.11.9-alpine
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     container_name: echo-tunes-caddy
     restart: unless-stopped
     ports: ["80:80", "443:443"]

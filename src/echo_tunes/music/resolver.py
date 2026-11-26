@@ -47,12 +47,8 @@ class Resolver:
         cache_dir: Path | None,
         cache_size: int = 64,
     ) -> None:
-        # "spawn" gives each worker a clean interpreter; max_tasks_per_child recycles it.
-        self._pool = ProcessPoolExecutor(
-            max_workers=workers,
-            mp_context=multiprocessing.get_context("spawn"),
-            max_tasks_per_child=tasks_per_worker,
-        )
+        self._workers, self._tasks_per_worker = workers, tasks_per_worker
+        self._pool = self._new_pool()
         self._cookies = str(cookies) if cookies else None
         self._cache_dir = str(cache_dir) if cache_dir else None
         self._cache: BoundedTTLCache[str, AudioSource] = BoundedTTLCache(cache_size, ttl=3600)
@@ -90,6 +86,10 @@ class Resolver:
             future.set_result(source)
             return source
         except BaseException as exc:
+            if isinstance(exc, TimeoutError):
+                # The worker is still stuck on this job; replace the pool so new songs
+                # don't queue behind it.
+                self._restart_pool()
             if isinstance(exc, Exception):
                 METRICS.resolve_failed(exc)
             future.set_exception(exc)
@@ -97,6 +97,21 @@ class Resolver:
             raise
         finally:
             self._inflight.pop(video_id, None)
+
+    def _new_pool(self) -> ProcessPoolExecutor:
+        # "spawn" gives each worker a clean interpreter; max_tasks_per_child recycles it.
+        return ProcessPoolExecutor(
+            max_workers=self._workers,
+            mp_context=multiprocessing.get_context("spawn"),
+            max_tasks_per_child=self._tasks_per_worker,
+        )
+
+    def _restart_pool(self) -> None:
+        old, self._pool = self._pool, self._new_pool()
+        log.warning("a YouTube lookup timed out; restarting the worker processes")
+        for proc in list(getattr(old, "_processes", {}).values()):
+            proc.terminate()
+        old.shutdown(wait=False, cancel_futures=True)
 
     def warm(self, video_id: str) -> None:
         """Resolve in the background so the link is ready before the Echo asks for it."""

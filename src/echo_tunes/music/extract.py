@@ -32,6 +32,9 @@ def _client(cookies: str | None, cache_dir: str | None) -> Any:
             "skip_download": True,
             "cachedir": cache_dir or False,
             "js_runtimes": {"deno": {}},
+            # Bound each network wait, so a stalled YouTube can't hold a worker for long.
+            "socket_timeout": 10,
+            "extractor_retries": 1,
         }
         if cookies and Path(cookies).exists():
             opts["cookiefile"] = cookies
@@ -59,6 +62,11 @@ def resolve(
 
 
 def version() -> str:
-    import yt_dlp.version
+    """yt-dlp's version, read from package metadata (doesn't load yt-dlp itself)."""
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as dist_version
 
-    return str(yt_dlp.version.__version__)
+    try:
+        return dist_version("yt-dlp")
+    except PackageNotFoundError:
+        return "not installed"

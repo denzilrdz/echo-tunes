@@ -46,3 +46,9 @@ def test_stream_key_is_created_once_and_private(
     assert len(key) == 32
     assert (tmp_path / "stream.key").stat().st_mode & 0o777 == 0o600
     assert make(monkeypatch, tmp_path).stream_secret == key
+
+
+def test_damaged_stream_key_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "stream.key").write_bytes(b"")
+    with pytest.raises(ValueError, match="damaged"):
+        _ = make(monkeypatch, tmp_path).stream_secret
