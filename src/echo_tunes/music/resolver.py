@@ -55,6 +55,9 @@ class Resolver:
         self._cache: BoundedTTLCache[str, AudioSource] = BoundedTTLCache(cache_size, ttl=3600)
         self._inflight: dict[str, asyncio.Task[AudioSource]] = {}
         self._background: set[asyncio.Task[None]] = set()
+        # One lookup per worker at a time: the rest wait here, not in the pool's queue, so
+        # RESOLVE_TIMEOUT only counts time actually spent running (waiting isn't "stuck").
+        self._slots = asyncio.Semaphore(workers)
 
     async def get(self, video_id: str) -> AudioSource:
         cached = self._cache.get(video_id)
@@ -73,14 +76,15 @@ class Resolver:
         loop = asyncio.get_running_loop()
         t0 = time.monotonic()
         for attempt in range(2):
-            pool = self._pool
             try:
-                raw = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        pool, extract.resolve, video_id, self._cookies, self._cache_dir
-                    ),
-                    RESOLVE_TIMEOUT,
-                )
+                async with self._slots:
+                    pool = self._pool
+                    raw = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            pool, extract.resolve, video_id, self._cookies, self._cache_dir
+                        ),
+                        RESOLVE_TIMEOUT,
+                    )
                 break
             except TimeoutError as exc:
                 # The worker is still stuck on this job; replace the pool so new songs

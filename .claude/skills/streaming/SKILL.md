@@ -11,6 +11,8 @@ description: The audio relay and the yt-dlp resolver. Use when changing src/echo
   when a worker is recycled.
 - One lookup per song at a time: `_inflight` holds an **asyncio Task**; callers `shield()` it,
   so a caller that gives up doesn't cancel it for others.
+- An `asyncio.Semaphore` sized to the worker count gates submissions: lookups wait their turn
+  outside the pool, and `RESOLVE_TIMEOUT` starts only once one is running.
 - A lookup over `RESOLVE_TIMEOUT` restarts the pool (terminating the stuck worker). Lookups
   that were sharing the old pool see `BrokenProcessPool`/a cancelled future and **retry once**
   on the new pool.

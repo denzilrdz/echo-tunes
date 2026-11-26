@@ -82,6 +82,18 @@ async def test_one_timeout_does_not_fail_other_lookups(
     res.close()
 
 
+async def test_waiting_for_a_worker_does_not_count_as_a_timeout(
+    res: Resolver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Audit: the timeout started when a lookup was queued, so with one worker, 4 of 6
+    one-second lookups "timed out" while waiting their turn and the pool was restarted."""
+    monkeypatch.setattr(resolver, "RESOLVE_TIMEOUT", 0.5)
+    ids = [f"slow000000{i}" for i in range(6)]  # 0.2 s each, 1.2 s in a row on one worker
+    results = await asyncio.gather(*(res.get(v) for v in ids))
+    assert [r.url.rsplit("/", 1)[1] for r in results] == ids
+    res.close()
+
+
 async def test_errors_reach_every_caller_and_are_not_cached(res: Resolver) -> None:
     results = await asyncio.gather(
         res.get("bad00000001"), res.get("bad00000001"), return_exceptions=True
