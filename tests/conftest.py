@@ -13,7 +13,7 @@ from cryptography.x509.oid import NameOID
 from cryptography.x509.verification import Store
 
 from echo_tunes.alexa.skill import Skill, SkillConfig
-from echo_tunes.music.catalog import Track
+from echo_tunes.music.catalog import Collection, NotSignedIn, Track
 from echo_tunes.music.resolver import AudioSource
 from echo_tunes.player.store import StateStore
 
@@ -27,10 +27,38 @@ def song(n: int) -> Track:
 
 
 class FakeCatalog:
-    def __init__(self) -> None:
+    def __init__(self, signed_in: bool = False) -> None:
         self.searches: deque[str] = deque(maxlen=100)
         self.radios: deque[str] = deque(maxlen=100)
+        self.liked: deque[str] = deque(maxlen=100)
+        self.history: deque[str] = deque(maxlen=100)
         self._next = 100
+        self.signed_in = signed_in
+
+    def _need(self) -> None:
+        if not self.signed_in:
+            raise NotSignedIn
+
+    async def liked_songs(self) -> Collection:
+        self._need()
+        return Collection("your liked songs", [song(i) for i in range(500, 520)])
+
+    async def playlist(self, name: str) -> Collection | None:
+        self._need()
+        if "road" not in name:
+            return None
+        return Collection("Road Trip", [song(i) for i in range(600, 610)])
+
+    async def mix(self, name: str) -> Collection | None:
+        self._need()
+        return Collection("My Supermix", [song(i) for i in range(700, 750)])
+
+    async def like(self, video_id: str) -> None:
+        self._need()
+        self.liked.append(video_id)
+
+    async def played(self, video_id: str) -> None:
+        self.history.append(video_id)
 
     async def search_song(self, query: str) -> Track | None:
         self.searches.append(query)

@@ -41,6 +41,14 @@ class Settings(BaseSettings):
         default=None, description="Optional Netscape cookies.txt for yt-dlp."
     )
 
+    # Google sign-in (optional): the OAuth client used by `echo-tunes login`. It can also be
+    # typed in at login, which saves it in the data folder.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    send_history: bool = Field(
+        default=False, description="Add played songs to your YouTube history (when signed in)."
+    )
+
     # Resource limits (keep memory flat no matter how long it runs)
     resolver_workers: int = Field(default=2, ge=1, le=8)
     resolver_tasks_per_worker: int = Field(default=25, ge=1, le=1000)

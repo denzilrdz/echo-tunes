@@ -17,6 +17,7 @@ from echo_tunes.alexa.skill import Skill, SkillConfig
 from echo_tunes.alexa.verify import MAX_BODY_BYTES, AlexaVerifier, RequestRejected
 from echo_tunes.config import Settings
 from echo_tunes.health import memory_mb
+from echo_tunes.music import account
 from echo_tunes.music.catalog import YTMusicCatalog
 from echo_tunes.music.resolver import Resolver
 from echo_tunes.player.store import StateStore
@@ -55,7 +56,17 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             radio_length=settings.radio_length,
             max_queue=settings.max_queue,
         ),
-        catalog=YTMusicCatalog(settings.language, settings.location),
+        catalog=YTMusicCatalog(
+            *account.make_client(
+                settings.data_dir,
+                settings.language,
+                settings.location,
+                account.load_client(
+                    settings.data_dir, settings.google_client_id, settings.google_client_secret
+                ),
+            ),
+            send_history=settings.send_history,
+        ),
         resolver=resolver,
         store=store,
     )
@@ -109,13 +120,21 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
 
     @app.post("/alexa")
     async def alexa(request: Request) -> Response:
-        declared = request.headers.get("content-length", "0")
-        if not declared.isdigit() or int(declared) > MAX_BODY_BYTES:
+        declared = request.headers.get("content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > MAX_BODY_BYTES):
             return JSONResponse({"error": "bad request"}, status_code=400)
-        body = await request.body()
+        # Read in pieces and stop at the limit: a chunked request has no Content-Length,
+        # and the header can't be trusted anyway.
+        body = bytearray()
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > MAX_BODY_BYTES:
+                return JSONResponse({"error": "bad request"}, status_code=400)
         s = svc(request)
         try:
-            envelope = await asyncio.to_thread(s.verifier.verify, dict(request.headers), body)
+            envelope = await asyncio.to_thread(
+                s.verifier.verify, dict(request.headers), bytes(body)
+            )
         except RequestRejected as exc:
             log.warning("rejected a request to /alexa: %s", exc)
             return JSONResponse({"error": "bad request"}, status_code=400)

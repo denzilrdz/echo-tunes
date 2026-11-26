@@ -8,12 +8,14 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 [![ci](https://github.com/denzilrdz/echo-tunes/actions/workflows/ci.yml/badge.svg)](https://github.com/denzilrdz/echo-tunes/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/denzilrdz/echo-tunes?include_prereleases&sort=semver)](https://github.com/denzilrdz/echo-tunes/releases)
 [![image: amd64 + arm64](https://img.shields.io/badge/image-amd64%20%7C%20arm64-2496ed)](https://github.com/denzilrdz/echo-tunes/pkgs/container/echo-tunes)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/denzilrdz/echo-tunes/badge)](https://scorecard.dev/viewer/?uri=github.com/denzilrdz/echo-tunes)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [Quick start](#quick-start) ·
 [Setup guide](docs/SETUP.md) ·
 [Public HTTPS options](docs/PUBLIC_HTTPS.md) ·
 [Voice commands](docs/VOICE_COMMANDS.md) ·
+[Google sign-in](docs/GOOGLE_SIGN_IN.md) ·
 [How it works](docs/ARCHITECTURE.md) ·
 [Troubleshooting](docs/TROUBLESHOOTING.md)
 
@@ -31,6 +33,7 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **One container**      | A single Docker image (amd64 and arm64: PCs, cloud servers, Raspberry Pi). No AWS Lambda, no database server.     |
 | **No Amazon password** | You create a private skill in the free Alexa developer console. echo-tunes never sees your Amazon login.          |
+| **Your own music**     | Optional Google sign-in: "play my liked songs", your playlists, your mixes, "like this song".         |
 | **Endless radio**      | Every song starts a YouTube Music radio, and the queue tops itself up so the music doesn't stop.                  |
 | **Fast song changes**  | The next song's audio is prepared while the current one plays.                                                   |
 | **Runs anywhere**      | Home server behind a tunnel (Tailscale Funnel, Cloudflare Tunnel) or any server with a public IP. Ready examples. |
@@ -40,10 +43,11 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 | **Kept up to date**    | A daily job picks up new yt-dlp releases, so YouTube changes are fixed quickly.                                  |
 
 > [!NOTE]
-> **Early release (v0.1).** Tested end to end: voice playback, radio, queue top-up, next and
-> previous, pause and resume, playback events and memory over long runs. Coming next: sign in
-> with Google so radio and "play my playlist" use your own YouTube Music library
-> ([roadmap](#roadmap)). Please [report problems](https://github.com/denzilrdz/echo-tunes/issues).
+> **Early release.** Tested against real YouTube: voice playback, radio, queue top-up, next and
+> previous, pause and resume, playback events and memory over long runs. Google sign-in and
+> library playback (liked songs, playlists, mixes) are covered by automated tests but haven't
+> been tried with many real accounts yet. Please
+> [report problems](https://github.com/denzilrdz/echo-tunes/issues).
 
 ## Contents
 
@@ -111,6 +115,14 @@ docker compose exec echo-tunes echo-tunes doctor
 **4. Enable testing** (the skill's *Test* tab → *Development*) and say:
 *"Alexa, ask echo tunes to play Tum Hi Ho."*
 
+**5. Optional: sign in** so you can say *"play my liked songs"* or *"play my playlist Road Trip"*:
+
+```bash
+docker compose exec -it echo-tunes echo-tunes login
+```
+
+See [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
+
 ## How it works
 
 ```mermaid
@@ -149,6 +161,9 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_LANGUAGE`                  | `en`       | Language for song and artist names.                                         |
 | `ECHO_TUNES_RADIO_LENGTH`              | `25`       | Songs a radio adds at a time (5 to 50).                                     |
 | `ECHO_TUNES_MAX_QUEUE`                 | `200`      | Longest queue kept per Echo; played songs are dropped first.                |
+| `ECHO_TUNES_GOOGLE_CLIENT_ID`          | (none)     | OAuth client for `echo-tunes login` (or type it in at login).               |
+| `ECHO_TUNES_GOOGLE_CLIENT_SECRET`      | (none)     | Its secret.                                                                 |
+| `ECHO_TUNES_SEND_HISTORY`              | `false`    | When signed in, add played songs to your YouTube history.                   |
 | `ECHO_TUNES_YTDLP_COOKIES`             | (none)     | Path to a `cookies.txt` for yt-dlp, if YouTube blocks your server.          |
 | `ECHO_TUNES_RESOLVER_WORKERS`          | `2`        | Parallel workers that prepare audio links.                                  |
 | `ECHO_TUNES_RESOLVER_TASKS_PER_WORKER` | `25`       | Songs a worker prepares before a fresh one replaces it (frees memory).      |
@@ -156,11 +171,13 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_LOG_LEVEL`                 | `info`     | `debug`, `info`, `warning` or `error`.                                      |
 | `ECHO_TUNES_PORT`                      | `8080`     | Port inside the container.                                                  |
 
-Data (player queues, the key that signs audio links, yt-dlp's cache) lives in `/data`.
+Data (player queues, the key that signs audio links, your sign-in token, yt-dlp's cache) lives
+in `/data`; back it up and keep it private.
 
 ## FAQ
 
-**Do I need YouTube Premium?** No. Songs play without an account.
+**Do I need YouTube Premium?** No. Songs play without an account. Signing in (optional) only
+adds your own library: liked songs, playlists and mixes.
 
 **Are there ads?** echo-tunes plays the song's audio file directly, so nothing is inserted between songs.
 
@@ -180,8 +197,8 @@ content, so each person runs their own private copy. That's also why it's self-h
 
 ## Roadmap
 
-- [x] v0.1: voice playback, radio, queue, playback controls, Docker image, docs
-- [ ] v0.2: sign in with Google: your playlists, liked songs, mixes and personal radio
+- [x] Voice playback, radio, queue, playback controls, Docker image, docs
+- [x] Sign in with Google: your playlists, liked songs, mixes and personal radio
 - [ ] v0.3: a small setup page with a checklist and a "test play" button
 - [ ] More languages for the voice model (German, Spanish, French, ...): contributions welcome
 

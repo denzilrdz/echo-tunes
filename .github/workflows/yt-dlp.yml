@@ -57,5 +57,6 @@ jobs:
           git push --force origin deps/yt-dlp
           if ! gh pr view deps/yt-dlp --json state --jq .state 2>/dev/null | grep -q OPEN; then
             gh pr create --head deps/yt-dlp --title "chore(deps): update yt-dlp to ${VERSION}" \
+              --label yt-dlp --label dependencies \
               --body "Automated daily update. Tests passed in the workflow run. Merge, then tag a release to ship it."
           fi

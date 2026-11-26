@@ -10,7 +10,7 @@ from typing import Any
 
 from echo_tunes import tokens
 from echo_tunes.alexa import responses as r
-from echo_tunes.music.catalog import Catalog, Track
+from echo_tunes.music.catalog import Catalog, Collection, NotSignedIn, Track
 from echo_tunes.music.resolver import AudioResolver
 from echo_tunes.player.state import PlayerState
 from echo_tunes.player.store import StateStore
@@ -21,7 +21,12 @@ MAX_FAILURES_IN_A_ROW = 3
 
 HELP = (
     "You can say: play, followed by a song or artist. Or: play radio for, followed by a song. "
+    "If you've signed in, say: play my liked songs, play my supermix, "
+    "or play my playlist, followed by its name. "
     "While music plays, say next, previous, pause, shuffle, or ask what's playing."
+)
+SIGN_IN_FIRST = (
+    "To play your own music, sign in to YouTube Music first. Run echo tunes login on your server."
 )
 
 
@@ -45,6 +50,7 @@ class Skill:
         # One lock per Echo so its events are handled in order. Weak values: a lock disappears
         # as soon as nothing is waiting on it, so this never grows.
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+        self._background: set[asyncio.Task[None]] = set()
 
     # --- entry point ------------------------------------------------------------------------
     async def handle(self, envelope: dict[str, Any]) -> r.Response:
@@ -101,6 +107,10 @@ class Skill:
                         "What should I play?", reprompt="Say a song or artist.", end_session=False
                     )
                 return await self._start(query, state, radio_intro=name == "PlayRadioIntent")
+            case "PlayLikedIntent" | "PlayPlaylistIntent" | "PlayMixIntent":
+                return await self._start_collection(name, intent, state)
+            case "LikeIntent":
+                return await self._like(state)
             case "WhatsPlayingIntent":
                 cur = state.current
                 return r.build(f"This is {cur.spoken}." if cur else "Nothing is playing.")
@@ -157,6 +167,51 @@ class Skill:
         intro = "Starting radio based on" if radio_intro else "Playing"
         return r.build(f"{intro} {track.spoken}.", directives=[self._play(state, 0)])
 
+    async def _start_collection(
+        self, name: str, intent: dict[str, Any], state: PlayerState
+    ) -> r.Response:
+        """Play liked songs, a playlist or a mix from the signed-in account."""
+        wanted = _slot(intent, "playlist") or _slot(intent, "mix")
+        try:
+            coll: Collection | None
+            if name == "PlayLikedIntent":
+                coll = await self.catalog.liked_songs()
+            elif name == "PlayPlaylistIntent":
+                if not wanted:
+                    return r.build(
+                        "Which playlist?", reprompt="Say the playlist's name.", end_session=False
+                    )
+                coll = await self.catalog.playlist(wanted)
+            else:
+                coll = await self.catalog.mix(wanted or "supermix")
+        except NotSignedIn:
+            return r.build(SIGN_IN_FIRST)
+        except Exception:
+            log.exception("loading %s failed", name)
+            return r.build("Sorry, I couldn't reach YouTube Music. Please try again.")
+        if coll is None:
+            what = f"a playlist called {wanted}" if name == "PlayPlaylistIntent" else "that mix"
+            return r.build(f"Sorry, I couldn't find {what} in your library.")
+        if not coll.tracks:
+            return r.build(f"{coll.title} has no songs I can play.")
+        self.resolver.warm(coll.tracks[0].video_id)
+        state.replace(coll.tracks, self.cfg.max_queue)
+        state.failures = 0
+        return r.build(f"Playing {coll.title}.", directives=[self._play(state, 0)])
+
+    async def _like(self, state: PlayerState) -> r.Response:
+        cur = state.current
+        if cur is None:
+            return r.build("Nothing is playing.")
+        try:
+            await self.catalog.like(cur.video_id)
+        except NotSignedIn:
+            return r.build(SIGN_IN_FIRST)
+        except Exception:
+            log.exception("like failed")
+            return r.build("Sorry, I couldn't reach YouTube Music.")
+        return r.build(f"Added {cur.title} to your liked songs.")
+
     def _resume(self, envelope: dict[str, Any], state: PlayerState, *, speak: bool) -> r.Response:
         if not state.current:
             return (
@@ -201,6 +256,7 @@ class Skill:
                 if idx is not None:
                     state.index, state.offset_ms, state.failures = idx, 0, 0
                     self._warm_next(state)
+                    self._in_background(self.catalog.played(state.tracks[idx].video_id))
             case "PlaybackStopped":
                 if idx is not None:
                     state.index = idx
@@ -274,6 +330,11 @@ class Skill:
     def stream_url(self, video_id: str) -> str:
         t = tokens.make(self.cfg.stream_secret, video_id, self.cfg.stream_ttl_seconds)
         return f"{self.cfg.base_url}/stream/{t}.m4a"
+
+    def _in_background(self, coro: Any) -> None:
+        task = asyncio.create_task(coro)
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
 
     def _warm_next(self, state: PlayerState) -> None:
         nxt = state.next_index()

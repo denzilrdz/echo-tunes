@@ -44,6 +44,64 @@
           ]
         },
         {
+          "name": "PlayLikedIntent",
+          "slots": [],
+          "samples": [
+            "play my liked songs",
+            "play my likes",
+            "play my liked music",
+            "play songs i like",
+            "play my favourites",
+            "play my favorites",
+            "play my favourite songs",
+            "play my favorite songs",
+            "play my music"
+          ]
+        },
+        {
+          "name": "PlayPlaylistIntent",
+          "slots": [
+            {
+              "name": "playlist",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "play my playlist {playlist}",
+            "play the playlist {playlist}",
+            "play playlist {playlist}",
+            "play my {playlist} playlist"
+          ]
+        },
+        {
+          "name": "PlayMixIntent",
+          "slots": [
+            {
+              "name": "mix",
+              "type": "MixName"
+            }
+          ],
+          "samples": [
+            "play my {mix}",
+            "play {mix} for me",
+            "start my {mix}",
+            "play my mix"
+          ]
+        },
+        {
+          "name": "LikeIntent",
+          "slots": [],
+          "samples": [
+            "like this song",
+            "i like this song",
+            "i love this song",
+            "thumbs up",
+            "add this to my liked songs",
+            "save this song",
+            "like this"
+          ]
+        },
+        {
           "name": "WhatsPlayingIntent",
           "slots": [],
           "samples": [
@@ -118,7 +176,75 @@
           "samples": []
         }
       ],
-      "types": []
+      "types": [
+        {
+          "name": "MixName",
+          "values": [
+            {
+              "name": {
+                "value": "supermix",
+                "synonyms": [
+                  "super mix",
+                  "my supermix"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "discover mix",
+                "synonyms": [
+                  "discovery mix",
+                  "discover"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "new release mix",
+                "synonyms": [
+                  "new releases mix",
+                  "new music mix"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "replay mix",
+                "synonyms": [
+                  "replay"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "mix 1",
+                "synonyms": [
+                  "my mix 1",
+                  "first mix"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "mix 2",
+                "synonyms": [
+                  "my mix 2",
+                  "second mix"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "mix 3",
+                "synonyms": [
+                  "my mix 3",
+                  "third mix"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   }
 }

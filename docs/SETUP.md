@@ -130,6 +130,11 @@ to **Development**. The skill is now live on every Echo on your account. Try:
 
 See [all voice commands](VOICE_COMMANDS.md).
 
+## Optional: your own music
+
+Sign in to YouTube Music to say *"play my liked songs"*, *"play my playlist …"* or
+*"play my supermix"*: see [GOOGLE_SIGN_IN.md](GOOGLE_SIGN_IN.md).
+
 ## Updating
 
 ```bash

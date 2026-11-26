@@ -16,6 +16,19 @@ commands work on their own: *"Alexa, next"*.
 The queue never runs dry: when it's nearly finished, more songs are added from a radio based on
 the current song. Searches use your `ECHO_TUNES_LOCATION` country for better local results.
 
+## Your own music (after [signing in](GOOGLE_SIGN_IN.md))
+
+| Say                                          | What happens                                          |
+| -------------------------------------------- | ----------------------------------------------------- |
+| "… play **my liked songs**" / "**my likes**" | Your liked songs, newest first                        |
+| "… play **my playlist Road Trip**"           | A playlist from your library (close names are fine)   |
+| "… play **my supermix**"                     | Your My Supermix                                      |
+| "… play **my discover mix**" / "**my replay mix**" / "**my mix 1**" | That mix from your home page |
+| "… **like this song**"                       | Adds the playing song to your liked songs             |
+
+Say *"Alexa, shuffle"* after starting a playlist to shuffle it. When a playlist ends, a radio
+based on its last song carries on.
+
 ## While music is playing
 
 | Say                                   | Also on buttons / Alexa app | What happens                                   |

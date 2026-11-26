@@ -62,6 +62,21 @@ def test_samples_reference_defined_slots_and_are_unique() -> None:
             seen.add(sample)
 
 
+def test_generated_files_are_up_to_date() -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "build_voice_model", PKG.parent / "scripts/build_voice_model.py"
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for path, text in mod.render().items():
+        assert path.read_text() == text, (
+            f"run: uv run python scripts/build_voice_model.py ({path.name})"
+        )
+
+
 def test_manifest_uses_audio_player_and_placeholder_endpoint() -> None:
     manifest = json.loads((PKG / "skill.json").read_text())["manifest"]
     assert {"type": "AUDIO_PLAYER"} in manifest["apis"]["custom"]["interfaces"]

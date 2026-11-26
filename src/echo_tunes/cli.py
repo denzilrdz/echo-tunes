@@ -91,17 +91,36 @@ def doctor() -> None:
     report(True, "yt-dlp", extract.version())
 
     async def music_checks() -> None:
+        from echo_tunes.music import account
         from echo_tunes.music.catalog import YTMusicCatalog
 
+        method = account.signed_in_method(settings.data_dir)
+        oauth_client = account.load_client(
+            settings.data_dir, settings.google_client_id, settings.google_client_secret
+        )
         try:
-            track = await YTMusicCatalog(settings.language, settings.location).search_song(
-                "never gonna give you up"
+            catalog = YTMusicCatalog(
+                *account.make_client(
+                    settings.data_dir, settings.language, settings.location, oauth_client
+                )
             )
+            track = await catalog.search_song("never gonna give you up")
             report(
                 track is not None, "YouTube Music search", track.spoken if track else "no results"
             )
+            if method is None:
+                print("  - YouTube Music account: not signed in (optional, see echo-tunes login)")
+            elif method == "google" and oauth_client is None:
+                report(False, "YouTube Music account", "signed in, but the OAuth client is missing")
+            else:
+                liked = await catalog.liked_songs()
+                report(
+                    True,
+                    "YouTube Music account",
+                    f"signed in ({method}); {len(liked.tracks)} liked songs readable",
+                )
         except Exception as exc:
-            report(False, "YouTube Music search", str(exc))
+            report(False, "YouTube Music", f"{type(exc).__name__}: {exc}")
 
         try:
             t0 = time.monotonic()
@@ -142,15 +161,87 @@ def doctor() -> None:
     sys.exit(1 if failures else 0)
 
 
+def login(use_browser: bool) -> None:
+    """Sign in to YouTube Music (stores a token in the data folder)."""
+    from echo_tunes.music import account
+
+    settings = _settings()
+    try:
+        if use_browser:
+            print(BROWSER_HELP)
+            headers = sys.stdin.read()
+            account.login_browser(settings.data_dir, headers)
+        else:
+            client = account.load_client(
+                settings.data_dir, settings.google_client_id, settings.google_client_secret
+            )
+            if client is None:
+                print(CLIENT_HELP)
+                client = account.ClientSecrets(
+                    input("Client ID: ").strip(), input("Client secret: ").strip()
+                )
+
+            def show(url: str, code: str) -> None:
+                print(f"\n  1. On your phone or computer, open  {url}")
+                print(f"  2. Enter the code                   {code}")
+                print("  3. Choose your YouTube Music account and allow access.\n")
+                print("Waiting for you to approve (Ctrl-C to cancel)...")
+
+            account.login_device(settings.data_dir, client, show)
+    except account.LoginError as exc:
+        print(f"\nSign-in failed: {exc}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        sys.exit(130)
+    print("\nSigned in. Restart echo-tunes to use your library:  docker compose restart echo-tunes")
+
+
+def logout() -> None:
+    from echo_tunes.music import account
+
+    removed = account.logout(_settings().data_dir)
+    print("Signed out; restart echo-tunes." if removed else "Not signed in.")
+
+
+CLIENT_HELP = """\
+echo-tunes signs in with Google's TV-style sign-in, which needs your own (free) OAuth client.
+Create one in a few minutes: docs/GOOGLE_SIGN_IN.md
+(Google Cloud console > APIs & Services > Credentials > Create credentials > OAuth client ID >
+"TVs and Limited Input devices", with the YouTube Data API v3 enabled.)
+
+It's saved in the data folder, so you only enter it once. You can also set
+ECHO_TUNES_GOOGLE_CLIENT_ID and ECHO_TUNES_GOOGLE_CLIENT_SECRET instead.
+"""
+
+BROWSER_HELP = """\
+Paste the request headers of a signed-in music.youtube.com tab (docs/GOOGLE_SIGN_IN.md), then
+press Enter and Ctrl-D:
+"""
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="echo-tunes", description=__doc__)
     parser.add_argument("--version", action="version", version=f"echo-tunes {__version__}")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("serve", help="run the server (default)")
     sub.add_parser("doctor", help="check configuration, YouTube access and the public URL")
+    p_login = sub.add_parser(
+        "login", help="sign in to YouTube Music (for your playlists and likes)"
+    )
+    p_login.add_argument(
+        "--browser",
+        action="store_true",
+        help="paste headers from a browser instead of Google sign-in",
+    )
+    sub.add_parser("logout", help="forget the YouTube Music sign-in")
     args = parser.parse_args(argv)
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     if args.command == "doctor":
         doctor()
+    elif args.command == "login":
+        login(args.browser)
+    elif args.command == "logout":
+        logout()
     else:
         serve()
