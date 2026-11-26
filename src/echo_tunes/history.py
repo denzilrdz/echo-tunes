@@ -49,6 +49,9 @@ class History:
         self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
+        # WAL + NORMAL: no disk flush per write (a power cut can lose the last few plays, but
+        # never corrupts the file). Every Alexa event writes, and SD cards are slow to flush.
+        self._db.execute("PRAGMA synchronous=NORMAL")
         self._db.executescript(_SCHEMA)
         self.prune()
 
@@ -141,8 +144,20 @@ class History:
         with self._lock:
             return [dict(r) for r in self._db.execute(sql, args)]
 
-    def stats(self, days: int | None = None, device: str | None = None) -> dict[str, Any]:
+    def stats(
+        self, days: int | None = None, device: str | None = None, utc_offset_min: int | None = None
+    ) -> dict[str, Any]:
+        """Totals, top songs/artists and plays per day.
+
+        Days are counted in the viewer's time zone (``utc_offset_min``, minutes east of UTC,
+        from the browser), else the server's: in Docker that's UTC, which would move evening
+        plays west of UTC to the next day.
+        """
         since = self._since(days)
+        if utc_offset_min is None:
+            day_expr, day_args = "date(started, 'unixepoch', 'localtime')", []
+        else:
+            day_expr, day_args = "date(started + ?, 'unixepoch')", [utc_offset_min * 60]
         where = "started >= ?" + (" AND device = ?" if device else "")
         args: list[Any] = [since] + ([device] if device else [])
         with self._lock:
@@ -164,10 +179,10 @@ class History:
                 args,
             ).fetchall()
             per_day = self._db.execute(
-                f"SELECT date(started, 'unixepoch', 'localtime') AS day, COUNT(*) AS plays,"  # noqa: S608
+                f"SELECT {day_expr} AS day, COUNT(*) AS plays,"  # noqa: S608
                 f" COALESCE(SUM(played_ms), 0) AS played_ms FROM plays WHERE {where}"
                 f" GROUP BY day ORDER BY day",
-                args,
+                [*day_args, *args],
             ).fetchall()
         return {
             "days": days or self.days,

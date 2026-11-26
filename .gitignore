@@ -17,8 +17,21 @@ cookies.txt
 *.key
 oauth.json
 browser.json
+google-oauth.json
+google-client.json
+google-browser.json
+stream.key
+
+# Test and coverage output
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.venv-315/
 
 # Editors / OS
 .DS_Store
 .idea/
 .vscode/
+.venv-lowest/
+lowest.txt

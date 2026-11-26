@@ -34,6 +34,7 @@ class Check:
 
 Search = Callable[[str], Awaitable[Track | None]]
 Resolve = Callable[[str], Awaitable[tuple[str, dict[str, str]]]]
+Library = Callable[[], Awaitable[Any]]  # loads the liked songs (a Collection)
 
 
 async def run_checks(
@@ -44,6 +45,7 @@ async def run_checks(
     signed_in: bool | None,
     last_alexa: float | None = None,
     password_set: bool | None = None,
+    library: Library | None = None,
 ) -> list[Check]:
     checks = [
         Check(
@@ -60,9 +62,11 @@ async def run_checks(
     checks.append(await _public(settings.base_url))
     if last_alexa is not None:
         checks.append(_alexa(last_alexa))
-    if signed_in is not None:
+    if signed_in and library is not None:
+        checks.append(await _library(library))
+    elif signed_in is not None:
         checks.append(
-            Check("YouTube Music account", "ok", "Signed in: your library is available", "")
+            Check("YouTube Music account", "ok", "Signed in", "")
             if signed_in
             else Check(
                 "YouTube Music account",
@@ -86,6 +90,23 @@ async def run_checks(
     return checks
 
 
+async def _library(library: Library) -> Check:
+    name = "YouTube Music account"
+    try:
+        async with asyncio.timeout(15):
+            liked = await library()
+    except Exception as exc:
+        return Check(
+            name,
+            "fail",
+            f"Signed in, but your library couldn't be read: {type(exc).__name__}: {exc}"[:200],
+            "Sign in again: echo-tunes logout, then echo-tunes login",
+            DOCS + "GOOGLE_SIGN_IN.md",
+        )
+    count = len(getattr(liked, "tracks", None) or [])
+    return Check(name, "ok", f"Signed in: your library is readable ({count} liked songs)")
+
+
 def _data_folder(settings: Settings) -> Check:
     try:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -106,10 +127,15 @@ async def _deno() -> Check:
         proc = await asyncio.create_subprocess_exec(
             deno, "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
         )
+    except OSError as exc:
+        return Check(name, "fail", f"couldn't start: {exc}")
+    try:
         async with asyncio.timeout(10):
             out, _ = await proc.communicate()
-    except (TimeoutError, OSError) as exc:
-        return Check(name, "fail", f"didn't answer: {type(exc).__name__}")
+    except TimeoutError:
+        proc.kill()  # don't leave it running
+        await proc.wait()
+        return Check(name, "fail", "didn't answer within 10 s")
     return Check(name, "ok", out.decode(errors="replace").split("\n")[0])
 
 

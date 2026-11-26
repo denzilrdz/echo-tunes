@@ -187,23 +187,28 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_LOCATION`                  | (empty)    | Two-letter country for search results: `US`, `GB`, `IN`, ...                |
 | `ECHO_TUNES_LANGUAGE`                  | `en`       | Language for song and artist names.                                         |
 | `ECHO_TUNES_RADIO_LENGTH`              | `25`       | Songs a radio adds at a time (5 to 50).                                     |
-| `ECHO_TUNES_MAX_QUEUE`                 | `200`      | Longest queue kept per Echo; played songs are dropped first.                |
+| `ECHO_TUNES_MAX_QUEUE`                 | `200`      | Longest queue kept per Echo (20 to 1000); played songs are dropped first.   |
 | `ECHO_TUNES_GOOGLE_CLIENT_ID`          | (none)     | OAuth client for `echo-tunes login` (or type it in at login).               |
 | `ECHO_TUNES_GOOGLE_CLIENT_SECRET`      | (none)     | Its secret.                                                                 |
 | `ECHO_TUNES_SEND_HISTORY`              | `false`    | When signed in, add played songs to your YouTube history.                   |
-| `ECHO_TUNES_YTDLP_COOKIES`             | (none)     | Path to a `cookies.txt` for yt-dlp, if YouTube blocks your server.          |
-| `ECHO_TUNES_RESOLVER_WORKERS`          | `2`        | Parallel workers that prepare audio links.                                  |
-| `ECHO_TUNES_RESOLVER_TASKS_PER_WORKER` | `25`       | Songs a worker prepares before a fresh one replaces it (frees memory).      |
-| `ECHO_TUNES_STREAM_LINK_TTL_HOURS`     | `12`       | How long an audio link given to the Echo stays valid.                       |
+| `ECHO_TUNES_YTDLP_COOKIES`             | (none)     | Path to a `cookies.txt` for yt-dlp, if YouTube blocks your server (must exist). |
+| `ECHO_TUNES_RESOLVER_WORKERS`          | `2`        | Parallel workers that prepare audio links (1 to 8).                         |
+| `ECHO_TUNES_RESOLVER_TASKS_PER_WORKER` | `25`       | Songs a worker prepares before a fresh one replaces it (1 to 1000; frees memory). |
+| `ECHO_TUNES_STREAM_LINK_TTL_HOURS`     | `12`       | How long an audio link given to the Echo stays valid (1 to 48).             |
 | `ECHO_TUNES_DASHBOARD_PORT`            | `8081`     | Private dashboard, `/metrics` and JSON API (`0` = off). Never publish it. |
+| `ECHO_TUNES_DASHBOARD_HOST`            | `127.0.0.1` | Address the dashboard listens on (`0.0.0.0` in the Docker image, so its port can be published privately). |
+| `ECHO_TUNES_DASHBOARD_HOSTS`           | (none)     | Extra host names you open the dashboard by, comma-separated, no port (e.g. `music-dash.lan`). |
 | `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Optional password for the dashboard (user `admin`).                         |
-| `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none).                             |
+| `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |
 | `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `BEWY4D23ORJQ=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
-| `ECHO_TUNES_LOG_LEVEL`                 | `info`     | `debug`, `info`, `warning` or `error`.                                      |
-| `ECHO_TUNES_PORT`                      | `8080`     | Port inside the container.                                                  |
+| `ECHO_TUNES_LOG_LEVEL`                 | `info`     | `debug`, `info`, `warning`, `error` or `critical`.                          |
+| `ECHO_TUNES_PORT`                      | `8080`     | Public port (Alexa and the Echo's audio).                                   |
+| `ECHO_TUNES_HOST`                      | `0.0.0.0`  | Address the public port listens on.                                         |
+| `ECHO_TUNES_DATA_DIR`                  | `./data`   | Where everything is stored (`/data` in the Docker image).                   |
 
-Data (player queues, the key that signs audio links, your sign-in token, yt-dlp's cache) lives
-in `/data`; back it up and keep it private.
+Data (player queues, history, the key that signs audio links, your sign-in token, yt-dlp's
+cache) lives in the data folder (`/data` in Docker); back it up and keep it private. Files are
+created readable by the owner only.
 
 ## FAQ
 

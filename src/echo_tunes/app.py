@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from echo_tunes import __version__, tokens
 from echo_tunes.alexa.skill import Skill, SkillConfig
@@ -22,12 +22,12 @@ from echo_tunes.config import Settings
 from echo_tunes.dashboard import DashboardDeps
 from echo_tunes.health import memory_mb
 from echo_tunes.history import History
-from echo_tunes.metrics import METRICS, rejection_reason
+from echo_tunes.metrics import METRICS
 from echo_tunes.music import account
 from echo_tunes.music.catalog import YTMusicCatalog
 from echo_tunes.music.resolver import Resolver
 from echo_tunes.player.store import StateStore
-from echo_tunes.stream import StreamError, StreamRelay
+from echo_tunes.stream import MAX_STREAMS, AudioResponse, StreamError, StreamRelay
 
 log = logging.getLogger(__name__)
 
@@ -51,9 +51,16 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
     )
     store = StateStore(settings.data_dir / "players.sqlite3")
     history = History(settings.data_dir / "history.sqlite3", settings.history_days)
+    # Song bodies get one connection per open stream (capped by StreamSlots); the readiness
+    # probes that start each song have their own small pool so open streams can't block them.
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(15.0, connect=5.0),
-        limits=httpx.Limits(max_connections=16, max_keepalive_connections=4),
+        limits=httpx.Limits(max_connections=MAX_STREAMS, max_keepalive_connections=4),
+        follow_redirects=True,
+    )
+    probe_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(10.0, connect=5.0),
+        limits=httpx.Limits(max_connections=8, max_keepalive_connections=2),
         follow_redirects=True,
     )
     catalog = YTMusicCatalog(
@@ -87,7 +94,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
     services = Services(
         skill=skill,
         verifier=AlexaVerifier(settings.skill_ids),
-        relay=StreamRelay(resolver, client),
+        relay=StreamRelay(resolver, client, probe_client),
         stream_secret=settings.stream_secret,
         dashboard=DashboardDeps(
             store=store,
@@ -103,7 +110,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             test_play=lambda: _test_play(skill),
         ),
     )
-    return services, [resolver, store, history, client, services.verifier, catalog]
+    return services, [resolver, store, history, client, probe_client, services.verifier, catalog]
 
 
 async def _setup_checks(
@@ -120,6 +127,7 @@ async def _setup_checks(
         signed_in=catalog.signed_in,
         last_alexa=METRICS.last_alexa_at,
         password_set=bool(password),
+        library=catalog.liked_songs,
     )
     return summary(checks)
 
@@ -188,7 +196,8 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
 
     @app.get("/healthz")
     async def healthz() -> dict[str, object]:
-        return {"status": "ok", "version": __version__, "memory_mb": memory_mb()}
+        # Public: no version number (the private dashboard's /api/health has it).
+        return {"status": "ok", "memory_mb": memory_mb()}
 
     @app.post("/alexa")
     async def alexa(request: Request) -> Response:
@@ -209,7 +218,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             envelope = await s.verifier.verify_async(dict(request.headers), bytes(body))
         except RequestRejected as exc:
             log.warning("rejected a request to /alexa: %s", exc)
-            METRICS.alexa_rejected.labels(rejection_reason(str(exc))).inc()
+            METRICS.alexa_rejected.labels(exc.reason).inc()
             return JSONResponse({"error": "bad request"}, status_code=400)
         METRICS.alexa_request(str((envelope.get("request") or {}).get("type", "")))
         return JSONResponse(await s.skill.handle(envelope))
@@ -222,18 +231,27 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         except tokens.BadToken:
             METRICS.streams.labels("bad_link").inc()
             return Response(status_code=404)
+        refused = s.relay.slots.acquire(token)
+        if refused:
+            METRICS.streams.labels("too_many").inc()
+            log.warning("refused a stream for %s: %s", video_id, refused)
+            status = 503 if refused == "busy" else 429
+            return Response(status_code=status, headers={"Retry-After": "5"})
         try:
             source, rng = await s.relay.open(video_id, request.headers.get("range"))
         except StreamError as exc:
+            s.relay.slots.release(token)
             log.warning("stream %s: %s", video_id, exc)
             METRICS.streams.labels("range_error" if exc.status == 416 else "youtube_error").inc()
             headers = {"Content-Range": "bytes */*"} if exc.status == 416 else None
             return Response(status_code=exc.status, headers=headers)
-        except Exception:
+        except BaseException as exc:
+            s.relay.slots.release(token)
+            if not isinstance(exc, Exception):
+                raise
             log.exception("could not open stream for %s", video_id)
             METRICS.streams.labels("error").inc()
             return Response(status_code=502)
-        METRICS.streams.labels("ok").inc()
         headers = {
             "Accept-Ranges": "bytes",
             "Content-Length": str(rng.length),
@@ -244,9 +262,16 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             status = 206
             headers["Content-Range"] = f"bytes {rng.start}-{rng.end}/{rng.total}"
         if request.method == "HEAD":
+            s.relay.slots.release(token)
+            METRICS.streams.labels("ok").inc()
             return Response(status_code=status, headers=headers, media_type=source.mime)
-        return StreamingResponse(
-            s.relay.body(source, rng), status_code=status, headers=headers, media_type=source.mime
+        return AudioResponse(
+            s.relay.body(source, rng, video_id),
+            length=rng.length,
+            on_close=lambda: s.relay.slots.release(token),
+            status_code=status,
+            headers=headers,
+            media_type=source.mime,
         )
 
     return app

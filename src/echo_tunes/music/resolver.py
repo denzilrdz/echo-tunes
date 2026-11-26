@@ -7,6 +7,7 @@ import logging
 import multiprocessing
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -52,51 +53,70 @@ class Resolver:
         self._cookies = str(cookies) if cookies else None
         self._cache_dir = str(cache_dir) if cache_dir else None
         self._cache: BoundedTTLCache[str, AudioSource] = BoundedTTLCache(cache_size, ttl=3600)
-        self._inflight: dict[str, asyncio.Future[AudioSource]] = {}
+        self._inflight: dict[str, asyncio.Task[AudioSource]] = {}
         self._background: set[asyncio.Task[None]] = set()
 
     async def get(self, video_id: str) -> AudioSource:
         cached = self._cache.get(video_id)
         if cached is not None:
             return cached
-        pending = self._inflight.get(video_id)
-        if pending is not None:
-            return await asyncio.shield(pending)
+        task = self._inflight.get(video_id)
+        if task is None:
+            # The lookup runs as its own task: a caller that gives up (the Echo hung up) doesn't
+            # cancel it for everyone else waiting on the same song, and the result is cached.
+            task = asyncio.create_task(self._resolve(video_id))
+            self._inflight[video_id] = task
+            task.add_done_callback(lambda done: self._finished(video_id, done))
+        return await asyncio.shield(task)
+
+    async def _resolve(self, video_id: str) -> AudioSource:
         loop = asyncio.get_running_loop()
-        future: asyncio.Future[AudioSource] = loop.create_future()
-        self._inflight[video_id] = future
         t0 = time.monotonic()
-        try:
-            raw = await asyncio.wait_for(
-                loop.run_in_executor(
-                    self._pool, extract.resolve, video_id, self._cookies, self._cache_dir
-                ),
-                RESOLVE_TIMEOUT,
-            )
-            source = AudioSource(
-                url=raw["url"],
-                headers=raw["headers"],
-                size=raw["size"],
-                mime=raw["mime"],
-                expires=raw["expires"],
-            )
-            ttl = max(60.0, source.expires - time.time() - EXPIRY_MARGIN)
-            self._cache.set(video_id, source, ttl=ttl)
-            METRICS.resolved(time.monotonic() - t0)
-            future.set_result(source)
-            return source
-        except BaseException as exc:
-            if isinstance(exc, TimeoutError):
+        for attempt in range(2):
+            pool = self._pool
+            try:
+                raw = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        pool, extract.resolve, video_id, self._cookies, self._cache_dir
+                    ),
+                    RESOLVE_TIMEOUT,
+                )
+                break
+            except TimeoutError as exc:
                 # The worker is still stuck on this job; replace the pool so new songs
                 # don't queue behind it.
-                self._restart_pool()
-            if isinstance(exc, Exception):
+                self._restart_pool(pool)
                 METRICS.resolve_failed(exc)
-            future.set_exception(exc)
-            future.exception()  # mark retrieved so asyncio doesn't warn when nobody else waits
-            raise
-        finally:
-            self._inflight.pop(video_id, None)
+                raise
+            except (BrokenProcessPool, asyncio.CancelledError) as exc:
+                # Another lookup timed out and the pool it shared with us was replaced.
+                # That isn't this song's fault: try once more on the new pool.
+                me = asyncio.current_task()
+                if attempt == 0 and self._pool is not pool and not (me and me.cancelling()):
+                    log.info("retrying %s on the restarted worker processes", video_id)
+                    continue
+                if isinstance(exc, BrokenProcessPool):
+                    METRICS.resolve_failed(exc)
+                raise
+            except Exception as exc:
+                METRICS.resolve_failed(exc)
+                raise
+        source = AudioSource(
+            url=raw["url"],
+            headers=raw["headers"],
+            size=raw["size"],
+            mime=raw["mime"],
+            expires=raw["expires"],
+        )
+        ttl = max(60.0, source.expires - time.time() - EXPIRY_MARGIN)
+        self._cache.set(video_id, source, ttl=ttl)
+        METRICS.resolved(time.monotonic() - t0)
+        return source
+
+    def _finished(self, video_id: str, task: asyncio.Task[AudioSource]) -> None:
+        self._inflight.pop(video_id, None)
+        if not task.cancelled():
+            task.exception()  # mark it retrieved: every caller may have given up already
 
     def _new_pool(self) -> ProcessPoolExecutor:
         # "spawn" gives each worker a clean interpreter; max_tasks_per_child recycles it.
@@ -106,8 +126,10 @@ class Resolver:
             max_tasks_per_child=self._tasks_per_worker,
         )
 
-    def _restart_pool(self) -> None:
-        old, self._pool = self._pool, self._new_pool()
+    def _restart_pool(self, old: ProcessPoolExecutor) -> None:
+        if old is not self._pool:
+            return  # already replaced by another timed-out lookup
+        self._pool = self._new_pool()
         log.warning("a YouTube lookup timed out; restarting the worker processes")
         for proc in list(getattr(old, "_processes", {}).values()):
             proc.terminate()
@@ -131,6 +153,6 @@ class Resolver:
         self._cache.pop(video_id)
 
     def close(self) -> None:
-        for task in self._background:
+        for task in [*self._background, *self._inflight.values()]:
             task.cancel()
         self._pool.shutdown(wait=False, cancel_futures=True)

@@ -7,10 +7,11 @@ Nothing here knows or cares where the server runs: the only link to the outside 
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -26,10 +27,12 @@ class Settings(BaseSettings):
     skill_ids: Annotated[list[str], NoDecode] = Field(
         description="Your Alexa skill ID(s), amzn1.ask.skill.…; other skills are refused.",
     )
-    data_dir: Path = Path("/data")
+    # Where the stream key, sign-in, queues and history live. The Docker image sets /data;
+    # run outside Docker, it's ./data next to where you start it.
+    data_dir: Path = Path("data")
     host: str = "0.0.0.0"  # noqa: S104 - a container must listen on all interfaces
-    port: int = 8080
-    log_level: str = "info"
+    port: int = Field(default=8080, ge=1, le=65535)
+    log_level: Literal["critical", "error", "warning", "info", "debug"] = "info"
 
     # YouTube Music
     language: str = "en"
@@ -71,6 +74,18 @@ class Settings(BaseSettings):
     resolver_tasks_per_worker: int = Field(default=25, ge=1, le=1000)
     stream_link_ttl_hours: int = Field(default=12, ge=1, le=48)
 
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _lower_level(cls, v: object) -> object:
+        return v.strip().lower() if isinstance(v, str) else v
+
+    @field_validator("ytdlp_cookies")
+    @classmethod
+    def _cookies_exist(cls, v: Path | None) -> Path | None:
+        if v is not None and not v.is_file():
+            raise ValueError(f"cookies file {v} not found")
+        return v
+
     @field_validator("skill_ids", mode="before")
     @classmethod
     def _split_ids(cls, v: object) -> object:
@@ -85,12 +100,31 @@ class Settings(BaseSettings):
             return [h.strip().lower() for h in v.split(",") if h.strip()]
         return v
 
+    @field_validator("dashboard_hosts")
+    @classmethod
+    def _bare_hosts(cls, v: list[str]) -> list[str]:
+        for h in v:
+            if not re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", h):
+                raise ValueError(
+                    f"{h!r} is not a bare host name (no port, scheme or path), e.g. music-dash.lan"
+                )
+        return v
+
     @field_validator("device_names", mode="before")
     @classmethod
     def _parse_names(cls, v: object) -> object:
         if isinstance(v, str):
-            pairs = [p.split("=", 1) for p in v.split(",") if "=" in p]
-            return {k.strip(): n.strip() for k, n in pairs if k.strip() and n.strip()}
+            names: dict[str, str] = {}
+            for part in (p.strip() for p in v.split(",")):
+                if not part:
+                    continue
+                key, sep, name = (s.strip() for s in part.partition("="))
+                if not sep or not key or not name:
+                    raise ValueError(
+                        f"{part!r} isn't <end of device ID>=<name> (names can't contain commas)"
+                    )
+                names[key] = name
+            return names
         return v
 
     @field_validator("dashboard_port")
@@ -118,6 +152,11 @@ class Settings(BaseSettings):
         if v.scheme != "https":
             raise ValueError(
                 "Alexa only talks to HTTPS addresses; public_url must start with https://"
+            )
+        if (v.path or "/") != "/" or v.query or v.fragment:
+            raise ValueError(
+                "public_url must be just the address, e.g. https://music.example.com "
+                "(no path, ? or #): echo-tunes serves /alexa and /stream at its root"
             )
         return v
 

@@ -26,6 +26,9 @@ class PlayerState:
     playing: bool = False
     position_ms: int = 0  # playback position at `since`
     since: float = 0.0  # wall-clock time of the last start/stop event
+    finished: bool = False  # the current song played to its end (resume starts over/next)
+    plays: int = 0  # bumped for every Play directive, so no two streams share a token
+    unshuffled: list[str] = field(default_factory=list)  # queue order before shuffle (IDs)
 
     def source_of(self, index: int) -> str:
         """Why this song is playing, for the history."""
@@ -36,13 +39,21 @@ class PlayerState:
     # --- tokens -------------------------------------------------------------------------
     # Alexa hands this back in every playback event, so it identifies queue + position.
     def token(self, index: int | None = None) -> str:
+        """A new token for playing ``index``: rev, position, song and a play counter.
+
+        The counter keeps tokens unique when the same song is queued right after itself
+        (loop with one song); Alexa rejects an ENQUEUE whose token equals the playing one.
+        """
         i = self.index if index is None else index
-        return f"{self.rev}:{i}:{self.tracks[i].video_id}"
+        self.plays += 1
+        return f"{self.rev}:{i}:{self.tracks[i].video_id}:{self.plays}"
 
     def index_from_token(self, token: str | None) -> int | None:
         if not token:
             return None
         parts = token.split(":")
+        if len(parts) == 4 and parts[3].isdigit():
+            parts = parts[:3]
         if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
             return None
         rev, i, video = int(parts[0]), int(parts[1]), parts[2]
@@ -65,15 +76,25 @@ class PlayerState:
         self.tracks = list(first.values())[:max_len]
         self.index = 0
         self.offset_ms = 0
+        self.finished = False
         self.rev += 1
-        if self.shuffle:
-            self._shuffle_rest()
+        self.unshuffled = []
+        if self.shuffle and len(self.tracks) > 1:
+            # A new playlist starts on a random song too, not always its first.
+            self.unshuffled = [t.video_id for t in self.tracks]
+            random.shuffle(self.tracks)
 
     def extend(self, tracks: list[Track], max_len: int) -> int:
         """Append unseen tracks; drop played ones from the front if over max_len."""
         known = {t.video_id for t in self.tracks}
-        added = [t for t in tracks if t.video_id not in known]
+        added: list[Track] = []
+        for t in tracks:
+            if t.video_id not in known:
+                known.add(t.video_id)
+                added.append(t)
         self.tracks.extend(added)
+        if self.unshuffled:
+            self.unshuffled.extend(t.video_id for t in added)
         overflow = len(self.tracks) - max_len
         if overflow > 0:
             drop = min(overflow, self.index)  # never drop the current or upcoming songs
@@ -81,6 +102,9 @@ class PlayerState:
                 self.tracks = self.tracks[drop:]
                 self.index -= drop
             self.tracks = self.tracks[:max_len]
+        if self.unshuffled:
+            kept = {t.video_id for t in self.tracks}
+            self.unshuffled = [v for v in self.unshuffled if v in kept]
         return len(added)
 
     def next_index(self) -> int | None:
@@ -94,14 +118,21 @@ class PlayerState:
         return len(self.tracks) - 1 if self.loop and self.tracks else None
 
     def set_shuffle(self, on: bool) -> None:
+        if on and not self.shuffle:
+            self.unshuffled = [t.video_id for t in self.tracks]
         self.shuffle = on
         if on:
-            self._shuffle_rest()
-
-    def _shuffle_rest(self) -> None:
-        rest = self.tracks[self.index + 1 :]
-        random.shuffle(rest)
-        self.tracks[self.index + 1 :] = rest
+            rest = self.tracks[self.index + 1 :]
+            random.shuffle(rest)
+            self.tracks[self.index + 1 :] = rest
+        elif self.unshuffled:
+            # Back to the original order for the songs after the current one.
+            rank = {v: n for n, v in enumerate(self.unshuffled)}
+            rest = sorted(
+                self.tracks[self.index + 1 :], key=lambda t: rank.get(t.video_id, 1 << 30)
+            )
+            self.tracks[self.index + 1 :] = rest
+            self.unshuffled = []
 
     # --- storage ------------------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
@@ -118,6 +149,9 @@ class PlayerState:
             "playing": self.playing,
             "position_ms": self.position_ms,
             "since": self.since,
+            "finished": self.finished,
+            "plays": self.plays,
+            "unshuffled": self.unshuffled,
         }
 
     @classmethod
@@ -135,4 +169,7 @@ class PlayerState:
             playing=bool(d.get("playing", False)),
             position_ms=int(d.get("position_ms", 0)),
             since=float(d.get("since", 0.0)),
+            finished=bool(d.get("finished", False)),
+            plays=int(d.get("plays", 0)),
+            unshuffled=[str(v) for v in d.get("unshuffled", [])],
         )

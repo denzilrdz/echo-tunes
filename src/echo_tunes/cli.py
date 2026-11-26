@@ -35,10 +35,13 @@ def serve() -> None:
     from echo_tunes.dashboard import create_dashboard
 
     settings = _settings()
+    # Files we create (stream key, databases, sign-in token) are readable by us only.
+    os.umask(0o077)
     logging.basicConfig(
         level=settings.log_level.upper(),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
+    logging.getLogger("uvicorn.error").addFilter(_ShortBodyFilter())
     # httpx logs every request URL at INFO; YouTube's links are long, signed and contain the
     # server's IP address, so keep them out of the logs unless debugging.
     if settings.log_level.lower() != "debug":
@@ -61,6 +64,8 @@ def serve() -> None:
                     host=settings.host,
                     port=settings.port,
                     proxy_headers=True,
+                    # The access log would print every stream link (a valid 12-hour token).
+                    access_log=False,
                     log_level=settings.log_level,
                     timeout_graceful_shutdown=5,
                     server_header=False,
@@ -125,6 +130,18 @@ def serve() -> None:
     asyncio.run(run())
 
 
+class _ShortBodyFilter(logging.Filter):
+    """uvicorn logs an ERROR when a response ends early; for audio that's expected (the client
+    went away or YouTube cut the song, see stream.AudioResponse), so make it a quiet INFO."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if "without completing response" in str(record.msg):
+            record.levelno, record.levelname = logging.INFO, "INFO"
+            record.msg = "a stream ended before its last byte (client gone or song cut short)"
+            return logging.getLogger().isEnabledFor(logging.INFO)
+        return True
+
+
 def doctor() -> None:
     """Run every check and print a list; exit 1 if anything failed."""
     from echo_tunes.checks import run_checks
@@ -148,7 +165,11 @@ def doctor() -> None:
 
     checks = asyncio.run(
         run_checks(
-            settings, search=catalog.search_song, resolve=resolve, signed_in=catalog.signed_in
+            settings,
+            search=catalog.search_song,
+            resolve=resolve,
+            signed_in=catalog.signed_in,
+            library=catalog.liked_songs,
         )
     )
     marks = {"ok": "\u2713", "warn": "!", "fail": "\u2717", "info": "-"}
