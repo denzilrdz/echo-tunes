@@ -58,7 +58,11 @@ description: Security rules for echo-tunes. Use before merging anything that tou
 
 - [ ] Actions pinned to full SHAs with a version comment; `persist-credentials: false`;
       per-job `permissions` with a comment per scope; no `${{ }}` inside `run:`.
-- [ ] No caches in `release.yml`; the release checks tag == version and runs tests first.
+- [ ] No caches in `release.yml` (setup-uv `enable-cache: false`, setup-qemu `cache-image:
+      false` with the binfmt image pinned by digest, setup-buildx `cache-binary: false`,
+      build-push `no-cache`); the release checks tag == version and runs tests first.
+- [ ] `yt-dlp.yml`: artifacts that a privileged job uses are uploaded *before* untrusted code
+      runs in the unprivileged job.
 - [ ] zizmor (auditor) and actionlint clean.
 - [ ] Image: non-root uid 10001, read-only root filesystem works, all capabilities dropped.
 
