@@ -50,6 +50,9 @@ All notable changes to this project are documented here. The format follows
 - *Add to queue* on a full queue says how many songs fit instead of claiming all were added.
 - Playlists and mixes answer within Alexa's time limit, with an apology when YouTube Music is
   slow, instead of failing silently.
+- A lower-case or unsupported `ECHO_TUNES_LOCATION` or `ECHO_TUNES_LANGUAGE` (e.g. `in`,
+  `en-US`) gives a clear configuration message instead of crashing `serve` and `doctor`;
+  `in` is read as `IN`.
 - Several songs looked up at once (e.g. a playlist with `ECHO_TUNES_RESOLVER_WORKERS=1`) no
   longer "time out" while merely waiting their turn, which also restarted the workers.
 - Dashboard: history and stats no longer hold up the Echo's requests while they run on a big

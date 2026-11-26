@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from ytmusicapi.constants import SUPPORTED_LANGUAGES, SUPPORTED_LOCATIONS
 
 MIN_TOKEN_LENGTH = 32
 
@@ -119,6 +120,38 @@ class Settings(BaseSettings):
         if v.stat().st_size > 2_000_000:
             raise ValueError(f"{v} is over 2 MB")
         return v
+
+    @field_validator("location", mode="before")
+    @classmethod
+    def _country(cls, v: object) -> object:
+        """Two letters, any case (``in`` → ``IN``); must be a country YouTube Music serves."""
+        if not isinstance(v, str):
+            return v
+        code = v.strip().upper()
+        if code and code not in SUPPORTED_LOCATIONS:
+            raise ValueError(
+                f"{v.strip()!r} isn't a country YouTube Music supports; use a two-letter code"
+                " such as US, GB, IN or DE, or leave it empty"
+            )
+        return code
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def _language(cls, v: object) -> object:
+        """A language YouTube Music shows names in: ``en``, ``de``, ``zh_CN``, ..."""
+        if not isinstance(v, str):
+            return v
+        text = v.strip() or "en"
+        by_lower = {lang.lower(): lang for lang in SUPPORTED_LANGUAGES}
+        found = by_lower.get(text.lower().replace("-", "_"))
+        if found:
+            return found
+        base = re.split(r"[-_]", text)[0].lower()
+        hint = f" (try {by_lower[base]!r})" if base in by_lower else ""
+        raise ValueError(
+            f"{text!r} isn't a language YouTube Music supports{hint}; use one of "
+            + ", ".join(sorted(SUPPORTED_LANGUAGES))
+        )
 
     @field_validator("dashboard_api_token")
     @classmethod

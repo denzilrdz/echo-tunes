@@ -18,6 +18,38 @@ def make(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **env: str) -> Setting
     return Settings()  # type: ignore[call-arg]
 
 
+def test_location_and_language_are_normalised(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Audit: a lower-case or unknown location/language crashed serve and doctor with a
+    ytmusicapi traceback instead of a configuration message."""
+    s = make(monkeypatch, tmp_path, LOCATION=" in ", LANGUAGE="DE")
+    assert (s.location, s.language) == ("IN", "de")
+    s = make(monkeypatch, tmp_path, LOCATION="", LANGUAGE="zh-cn")
+    assert (s.location, s.language) == ("", "zh_CN")
+    with pytest.raises(ValidationError, match="two-letter"):
+        make(monkeypatch, tmp_path, LOCATION="XX")
+    with pytest.raises(ValidationError, match="try 'en'"):
+        make(monkeypatch, tmp_path, LANGUAGE="en-US")
+    with pytest.raises(ValidationError, match="isn't a language"):
+        make(monkeypatch, tmp_path, LANGUAGE="klingon")
+
+
+def test_cli_explains_a_bad_location(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from echo_tunes import cli
+
+    monkeypatch.chdir(tmp_path)
+    for k, v in {"PUBLIC_URL": "https://music.example.com", "SKILL_IDS": ID1,
+                 "DATA_DIR": str(tmp_path), "LOCATION": "usa"}.items():  # fmt: skip
+        monkeypatch.setenv(f"ECHO_TUNES_{k}", v)
+    with pytest.raises(SystemExit) as exit_:
+        cli._settings()
+    assert exit_.value.code == 2
+    assert "ECHO_TUNES_LOCATION" in capsys.readouterr().out
+
+
 def test_reads_comma_separated_skill_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     s = make(monkeypatch, tmp_path, SKILL_IDS=f"{ID1}, {ID2}")
     assert s.skill_ids == [ID1, ID2]

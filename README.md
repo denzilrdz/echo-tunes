@@ -198,8 +198,8 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | -------------------------------------- | ---------- | --------------------------------------------------------------------------- |
 | `ECHO_TUNES_PUBLIC_URL`                | (required) | Public HTTPS address of this server, e.g. `https://music.example.com`.      |
 | `ECHO_TUNES_SKILL_IDS`                 | (required) | Your skill ID(s), comma-separated. Requests for other skills are refused.   |
-| `ECHO_TUNES_LOCATION`                  | (empty)    | Two-letter country for search results: `US`, `GB`, `IN`, ...                |
-| `ECHO_TUNES_LANGUAGE`                  | `en`       | Language for song and artist names.                                         |
+| `ECHO_TUNES_LOCATION`                  | (empty)    | Two-letter country for search results: `US`, `GB`, `IN`, ... (any case; one YouTube Music supports). |
+| `ECHO_TUNES_LANGUAGE`                  | `en`       | Language for song and artist names: `en`, `de`, `es`, `fr`, `hi`, `ja`, `zh_CN`, ... (not `en-US`). |
 | `ECHO_TUNES_RADIO_LENGTH`              | `25`       | Songs a radio adds at a time (5 to 50).                                     |
 | `ECHO_TUNES_MAX_QUEUE`                 | `200`      | Longest queue kept per Echo (20 to 1000); played songs are dropped first.   |
 | `ECHO_TUNES_GOOGLE_CLIENT_ID`          | (none)     | OAuth client for `echo-tunes login` (or type it in at login).               |
