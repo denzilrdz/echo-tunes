@@ -1,6 +1,6 @@
 [project]
 name = "echo-tunes"
-version = "0.2.0"
+version = "0.2.1"
 description = "Self-hosted Alexa skill that plays YouTube Music on your Echo. One Docker container, no AWS, no Amazon password."
 readme = "README.md"
 license = "MIT"
@@ -15,6 +15,7 @@ classifiers = [
   "Intended Audience :: End Users/Desktop",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Multimedia :: Sound/Audio :: Players",
 ]
 dependencies = [
@@ -47,6 +48,9 @@ dev = [
   "ruff>=0.14",
   "zizmor>=1.31.1",
 ]
+
+# Coverage-guided fuzzing (fuzz/); Atheris ships Linux wheels only, up to Python 3.14.
+fuzz = ["atheris>=3.1 ; sys_platform == 'linux' and python_version < '3.15'"]
 
 [build-system]
 requires = ["hatchling>=1.27"]

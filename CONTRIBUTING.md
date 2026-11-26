@@ -22,6 +22,9 @@ uv run pytest
 scripts/check-private-info.sh   # no IP addresses, tailnet names or real IDs
 ```
 
+Fuzzing (Linux only, Atheris): `uv sync --group fuzz && uv run python fuzz/fuzz_tokens.py
+-max_total_time=60`. CI fuzzes weekly; see `fuzz/README.md`.
+
 Run it locally (needs a public HTTPS address for Alexa to reach it, see docs/PUBLIC_HTTPS.md):
 
 ```bash

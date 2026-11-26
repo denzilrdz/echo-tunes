@@ -14,6 +14,8 @@ import re
 import time
 
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_SIG_TEXT = re.compile(r"^[A-Za-z0-9_-]{22}$")  # 16 bytes, URL-safe base64, no padding
+_EXPIRY = re.compile(r"^[0-9]{1,12}$")  # ASCII only: str.isdigit() also accepts "²", "٣"
 _SIG_BYTES = 16
 
 
@@ -51,7 +53,11 @@ def check(secret: bytes, token: str, now: float | None = None) -> str:
     if len(parts) != 3:
         raise BadToken("malformed")
     video_id, expires_text, sig_text = parts
-    if not is_video_id(video_id) or not expires_text.isdigit() or len(expires_text) > 12:
+    if (
+        not is_video_id(video_id)
+        or not _EXPIRY.match(expires_text)
+        or not _SIG_TEXT.match(sig_text)  # checked before decoding: no lenient base64
+    ):
         raise BadToken("malformed")
     try:
         sig = _unb64(sig_text)
