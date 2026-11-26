@@ -12,6 +12,10 @@ A private web page that shows what your Echos are doing:
 
 The dashboard is **read-only**: nothing on it can change what plays.
 
+It only answers to IP addresses, `localhost`, your public URL's name and names listed in
+`ECHO_TUNES_DASHBOARD_HOSTS`, and refuses background requests from other websites. That stops
+a malicious web page from reading it through your browser (DNS rebinding).
+
 ## Where it is
 
 It runs on a **second port, 8081**, separate from the public port 8080 that Amazon and your Echo
@@ -35,7 +39,8 @@ private as long as you don't publish 8081 to the internet yourself.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ECHO_TUNES_DASHBOARD_PORT` | `8081` | Port of the dashboard, `/metrics` and the JSON API. `0` turns it off. |
-| `ECHO_TUNES_DASHBOARD_HOST` | `0.0.0.0` | Address it listens on inside the container (publish it privately). |
+| `ECHO_TUNES_DASHBOARD_HOST` | `127.0.0.1` (`0.0.0.0` in the Docker image) | Address it listens on. The image listens on all interfaces so the port can be published; publish it privately. |
+| `ECHO_TUNES_DASHBOARD_HOSTS` | (none) | Extra host names you open it by, comma-separated (e.g. `music-dash.lan`). IP addresses, `localhost` and your public URL's name always work; other names are refused. |
 | `ECHO_TUNES_DASHBOARD_PASSWORD` | (none) | Optional password (HTTP Basic, user `admin`). |
 | `ECHO_TUNES_HISTORY_DAYS` | `15` | Days of play history to keep. `0` keeps none (and deletes what's there). |
 | `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `BEWY4D23ORJQ=Living room,A6TA55XMCKTY=Kitchen`. |

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hmac
+import ipaddress
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -55,9 +56,32 @@ class DashboardDeps:
     device_names: dict[str, str] = field(default_factory=dict)
     password: str | None = None
     public_origin: str = ""
+    allowed_hosts: frozenset[str] = frozenset()  # beyond IPs, localhost and the public name
     # Setup page: run the checks, and give the browser a test stream link.
     run_checks: Callable[[], Awaitable[dict[str, Any]]] | None = None
     test_play: Callable[[], dict[str, Any]] | None = None
+
+
+def host_allowed(host_header: str, extra: frozenset[str]) -> bool:
+    """Only answer to IP addresses, localhost, or names we were told about.
+
+    A DNS-rebinding attack points the attacker's own domain at this server, so its requests
+    carry the attacker's name in Host; refusing unknown names blocks it.
+    """
+    host = host_header.strip().lower()
+    if host.startswith("["):  # [IPv6]:port
+        host = host[1 : host.find("]")] if "]" in host else host
+    elif host.count(":") == 1:
+        host = host.rsplit(":", 1)[0]
+    if not host:
+        return False
+    if host in ("localhost", "localhost.") or host.endswith(".localhost") or host in extra:
+        return True
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
 
 
 def short_id(device: str) -> str:
@@ -133,6 +157,14 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     async def guard(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
+        if not host_allowed(request.headers.get("host", ""), deps.allowed_hosts):
+            return Response("Unknown host name; add it to ECHO_TUNES_DASHBOARD_HOSTS.", 421)
+        # Other websites may link here, but never read from here in the background.
+        if (
+            request.headers.get("sec-fetch-site") == "cross-site"
+            and request.headers.get("sec-fetch-mode") != "navigate"
+        ):
+            return Response(status_code=403)
         if expected and not hmac.compare_digest(
             request.headers.get("authorization", "").encode(), expected.encode()
         ):

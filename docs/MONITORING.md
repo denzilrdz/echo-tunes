@@ -11,6 +11,11 @@ these settings pre-filled with your addresses.
 | `GET /metrics` | private (8081) | Prometheus metrics |
 | `GET /api/now` | private (8081) | What's playing, for dashboards and automations |
 
+> [!NOTE]
+> The private port answers to IP addresses, `localhost` and your public URL's name. If a tool
+> reaches it by another host name (for example `http://homeserver:8081`), add that name to
+> `ECHO_TUNES_DASHBOARD_HOSTS`, or use the IP address. This blocks DNS-rebinding attacks.
+
 ## Uptime Kuma
 
 Two monitors cover everything:

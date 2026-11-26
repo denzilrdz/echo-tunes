@@ -72,11 +72,21 @@ def serve() -> None:
                     )
                 )
             )
-            logging.getLogger(__name__).info(
-                "dashboard on port %d%s (keep this port private)",
+            log = logging.getLogger(__name__)
+            log.info(
+                "dashboard on %s:%d%s (keep this port private)",
+                settings.dashboard_host,
                 settings.dashboard_port,
                 " with a password" if services.dashboard.password else "",
             )
+            loopback = settings.dashboard_host in ("127.0.0.1", "::1", "localhost")
+            if not loopback and not services.dashboard.password:
+                log.warning(
+                    "the dashboard has no password and listens on %s: publish port %d only "
+                    "to localhost, your LAN or a VPN, or set ECHO_TUNES_DASHBOARD_PASSWORD",
+                    settings.dashboard_host,
+                    settings.dashboard_port,
+                )
         tasks = [asyncio.create_task(s.serve()) for s in servers]
         try:
             # When one server stops (Ctrl-C / SIGTERM is delivered to it), stop the other too.

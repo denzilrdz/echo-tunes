@@ -96,6 +96,9 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             device_names=settings.device_names,
             password=password or None,
             public_origin=settings.base_url,
+            allowed_hosts=frozenset(
+                [*settings.dashboard_hosts, (settings.public_url.host or "").lower()]
+            ),
             run_checks=lambda: _setup_checks(settings, catalog, resolver, password),
             test_play=lambda: _test_play(skill),
         ),

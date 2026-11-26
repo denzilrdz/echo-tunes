@@ -38,7 +38,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
     MALLOC_ARENA_MAX=2 \
     DENO_DIR=/data/deno \
     XDG_CACHE_HOME=/data/cache \
-    ECHO_TUNES_DATA_DIR=/data
+    ECHO_TUNES_DATA_DIR=/data \
+    # The dashboard must listen on all interfaces inside the container so its port can be
+    # published; the compose files publish it on localhost (or tailnet-only) only.
+    ECHO_TUNES_DASHBOARD_HOST=0.0.0.0
 
 USER echotunes
 WORKDIR /data

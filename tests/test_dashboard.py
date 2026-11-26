@@ -26,7 +26,10 @@ def deps(skill: Skill, **kw: object) -> DashboardDeps:
 async def test_now_history_stats_and_health(skill: Skill) -> None:
     skill.history = History(":memory:", 15)
     await played(skill)
-    c = TestClient(create_dashboard(deps(skill, device_names={DEVICE[-12:]: "Living room"})))
+    c = TestClient(
+        base_url="http://localhost:8081",
+        app=create_dashboard(deps(skill, device_names={DEVICE[-12:]: "Living room"})),
+    )
 
     now = c.get("/api/now").json()["devices"]
     assert now[0]["name"] == "Living room" and now[0]["playing"] is True
@@ -65,7 +68,9 @@ async def test_history_follows_pause_and_next(skill: Skill) -> None:
 
 def test_metrics_endpoint(skill: Skill) -> None:
     skill.history = History(":memory:", 15)
-    body = TestClient(create_dashboard(deps(skill))).get("/metrics")
+    body = TestClient(base_url="http://localhost:8081", app=create_dashboard(deps(skill))).get(
+        "/metrics"
+    )
     assert body.status_code == 200
     text = body.text
     for name in (
@@ -80,7 +85,9 @@ def test_metrics_endpoint(skill: Skill) -> None:
 
 def test_password(skill: Skill) -> None:
     skill.history = History(":memory:", 15)
-    c = TestClient(create_dashboard(deps(skill, password="s3cret")))
+    c = TestClient(
+        base_url="http://localhost:8081", app=create_dashboard(deps(skill, password="s3cret"))
+    )
     assert c.get("/api/now").status_code == 401
     assert c.get("/metrics").status_code == 401
     bad = base64.b64encode(b"admin:nope").decode()
@@ -116,11 +123,12 @@ async def test_setup_checks_and_test_play(skill: Skill) -> None:
         }
 
     c = TestClient(
-        create_dashboard(
+        base_url="http://localhost:8081",
+        app=create_dashboard(
             deps(
                 skill, run_checks=checks, test_play=play, public_origin="https://music.example.com"
             )
-        )
+        ),
     )
     assert c.get("/api/setup").json()["status"] == "ok"
     c.get("/api/setup")
@@ -132,3 +140,24 @@ async def test_setup_checks_and_test_play(skill: Skill) -> None:
         "media-src 'self' https://music.example.com"
         in c.get("/").headers["content-security-policy"]
     )
+
+
+def test_dns_rebinding_and_cross_site_reads_are_refused(skill: Skill) -> None:
+    from echo_tunes.dashboard import host_allowed
+
+    for ok in ("127.0.0.1:8081", "192.168.1.5", "[::1]:8081", "localhost:8081", "echo.ts.net:8443"):
+        assert host_allowed(ok, frozenset({"echo.ts.net"})), ok
+    for bad in ("evil.example.com", "evil.example.com:8081", "", "127.0.0.1.evil.com"):
+        assert not host_allowed(bad, frozenset({"echo.ts.net"})), bad
+
+    skill.history = History(":memory:", 15)
+    c = TestClient(
+        base_url="http://localhost:8081",
+        app=create_dashboard(deps(skill, allowed_hosts=frozenset({"echo.ts.net"}))),
+    )
+    assert c.get("/api/now", headers={"Host": "evil.example.com"}).status_code == 421
+    assert c.get("/api/now", headers={"Host": "echo.ts.net:8443"}).status_code == 200
+    xs = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors"}
+    assert c.get("/api/now", headers=xs).status_code == 403
+    nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
+    assert c.get("/", headers=nav).status_code == 200  # a link from another site still opens it

@@ -52,7 +52,11 @@ class Settings(BaseSettings):
     # Dashboard, history and metrics: a SECOND port that must never be exposed publicly
     # (the public proxy/tunnel only forwards `port`). 0 turns the dashboard off.
     dashboard_port: int = Field(default=8081, ge=0, le=65535)
-    dashboard_host: str = "0.0.0.0"  # noqa: S104 - inside a container; publish it privately
+    # Loopback by default; the Docker image sets 0.0.0.0 so a port can be published (privately).
+    dashboard_host: str = "127.0.0.1"
+    # Extra host names the dashboard may be opened by (IP addresses, localhost and the public
+    # URL's name always work). Anything else is refused, which blocks DNS-rebinding attacks.
+    dashboard_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)
     dashboard_password: SecretStr | None = Field(
         default=None, description="Optional password for the dashboard and /metrics (user: admin)."
     )
@@ -71,6 +75,13 @@ class Settings(BaseSettings):
     def _split_ids(cls, v: object) -> object:
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @field_validator("dashboard_hosts", mode="before")
+    @classmethod
+    def _split_hosts(cls, v: object) -> object:
+        if isinstance(v, str):
+            return [h.strip().lower() for h in v.split(",") if h.strip()]
         return v
 
     @field_validator("device_names", mode="before")
