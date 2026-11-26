@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import sys
+import time
 
 from fastapi.testclient import TestClient
 
@@ -208,20 +209,25 @@ def test_sign_in_once_with_a_long_lived_cookie(skill: Skill) -> None:
     assert SESSION_COOKIE
 
 
-def test_login_attempts_are_limited(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import asyncio
+def test_wrong_passwords_are_slowed_down_but_never_lock_out(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Security review: a per-address lockout let one device behind the same reverse proxy lock
+    everyone out, and wrong Basic-auth passwords weren't limited at all."""
+    from echo_tunes import dashboard
 
-    async def no_wait(_: float) -> None:
-        return None
-
-    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    monkeypatch.setattr(dashboard, "WRONG_PASSWORD_DELAY", 0.05)
     skill.history = History(":memory:", 15)
     c = TestClient(
         create_dashboard(deps(skill, password="s3cret")), base_url="http://localhost:8081"
     )
-    for _ in range(10):
+    bad = base64.b64encode(b"admin:nope").decode()
+    t0 = time.monotonic()
+    for _ in range(4):
         assert c.post("/api/login", json={"password": "x"}).status_code == 401
-    assert c.post("/api/login", json={"password": "s3cret"}).status_code == 429
+        assert c.get("/api/now", headers={"Authorization": f"Basic {bad}"}).status_code == 401
+    assert time.monotonic() - t0 >= 8 * 0.05  # every wrong try waited
+    t0 = time.monotonic()
+    assert c.post("/api/login", json={"password": "s3cret"}).status_code == 200  # never locked out
+    assert time.monotonic() - t0 < 0.05
 
 
 def test_a_session_can_last_until_signed_out(skill: Skill) -> None:
@@ -236,3 +242,33 @@ def test_a_session_can_last_until_signed_out(skill: Skill) -> None:
     assert again.status_code == 200 and "echo_tunes_session=0." in again.headers["set-cookie"]
     assert session_valid("s3cret", session_value("s3cret", 0), 4_000_000_000)
     assert not session_valid("other", session_value("s3cret", 0), 0)
+
+
+async def test_parallel_guesses_still_take_turns(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Security review: guesses sent at once were all compared at once (only their answers
+    waited). Each check must wait for its turn before it's compared; a full queue gets 429."""
+    import asyncio
+
+    import httpx
+
+    from echo_tunes import dashboard
+
+    monkeypatch.setattr(dashboard, "WRONG_PASSWORD_DELAY", 0.05)
+    skill.history = History(":memory:", 15)
+    app = create_dashboard(deps(skill, password="s3cret"))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost:8081") as c:
+        t0 = time.monotonic()
+        rs = await asyncio.gather(
+            *(c.post("/api/login", json={"password": f"x{i}"}) for i in range(6))
+        )
+        assert [r.status_code for r in rs] == [401] * 6
+        assert time.monotonic() - t0 >= 6 * 0.05  # one at a time
+
+        monkeypatch.setattr(dashboard, "MAX_QUEUED_CHECKS", 2)
+        bad = base64.b64encode(b"admin:nope").decode()
+        rs = await asyncio.gather(
+            *(c.get("/api/now", headers={"Authorization": f"Basic {bad}"}) for _ in range(5))
+        )
+        codes = sorted(r.status_code for r in rs)
+        assert codes.count(429) >= 1 and set(codes) <= {401, 429}
