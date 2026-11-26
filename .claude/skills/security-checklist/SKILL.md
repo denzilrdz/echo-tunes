@@ -10,8 +10,15 @@ description: Security rules for echo-tunes. Use before merging anything that tou
 - [ ] `/alexa` verifies every request (`alexa/verify.py`): cert URL rules (ASCII, full match),
       chain to a trusted root with name `echo-api.amazon.com`, RSA-SHA256 signature over the
       exact body, timestamp within 150 s, skill ID. Each rejection carries a fixed `reason`.
-- [ ] Bodies are capped while reading (chunked requests have no Content-Length).
-- [ ] Stream links are HMAC-signed (128-bit) and expire; characters are checked before decoding.
+- [ ] Bodies are capped while reading (chunked requests have no Content-Length) and must
+      arrive within `BODY_READ_TIMEOUT` (10 s, reason `slow_body`).
+- [ ] JSON, timestamp and skill ID are checked *before* any certificate download (and again
+      after the signature); at most `MAX_PENDING_DOWNLOADS` downloads wait or run; a cached
+      certificate is verified inline, never behind the download pool.
+- [ ] The public server caps connections (`limit_concurrency`, 64); rejections are logged at
+      most once per reason every 10 s (`RateLimitedLog`), counted in metrics every time.
+- [ ] Stream links are HMAC-signed (128-bit) and expire; characters are checked before decoding,
+      and only the canonical base64 spelling of the signature is accepted.
 - [ ] No new public routes. `/healthz` reveals no version.
 - [ ] Nothing a client sends can hold resources without a total bound (slots, timeouts).
 

@@ -30,6 +30,13 @@ All notable changes to this project are documented here. The format follows
   session: *Sign out* really ends it (a copied cookie stops working), and lowering
   `ECHO_TUNES_DASHBOARD_SESSION_DAYS` shortens sessions already signed in.
 - Password checks take the same time whatever the length of the password tried.
+- `/alexa`: the cheap checks (skill ID, timestamp) run before any certificate download, at
+  most 4 downloads wait at once, and requests with an already known certificate never wait
+  behind them, so fake requests can't slow your Echo down. A request body must arrive within
+  10 s, the public port accepts at most 64 connections at once, and refused requests are
+  logged at most once per reason every 10 s.
+- Stream links accept only the exact signature they were issued with (base64 allowed 16
+  spellings of it).
 - The installed app's offline cache only keeps the dashboard page, the sign-in page and its
   own files. Opening an API address or `/metrics` as a page could store your history in the
   browser's cache; the old cache is deleted on the next visit.
@@ -53,6 +60,9 @@ All notable changes to this project are documented here. The format follows
 - A lower-case or unsupported `ECHO_TUNES_LOCATION` or `ECHO_TUNES_LANGUAGE` (e.g. `in`,
   `en-US`) gives a clear configuration message instead of crashing `serve` and `doctor`;
   `in` is read as `IN`.
+- Audio: a client that reads only a trickle no longer holds a stream for a whole song; a
+  network error while checking a YouTube link logs one line instead of a traceback; a range
+  past the end says how big the file is (`Content-Range: bytes */<size>`).
 - Several songs looked up at once (e.g. a playlist with `ECHO_TUNES_RESOLVER_WORKERS=1`) no
   longer "time out" while merely waiting their turn, which also restarted the workers.
 - Dashboard: history and stats no longer hold up the Echo's requests while they run on a big

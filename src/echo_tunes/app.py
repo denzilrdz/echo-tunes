@@ -31,6 +31,31 @@ from echo_tunes.stream import MAX_STREAMS, AudioResponse, StreamError, StreamRel
 
 log = logging.getLogger(__name__)
 
+BODY_READ_TIMEOUT = 10.0  # seconds to receive a whole /alexa request (Alexa sends it at once)
+LOG_EVERY = 10.0  # at most one "rejected" line per reason this often
+
+
+class RateLimitedLog:
+    """Logs a warning at most once per ``every`` seconds per key, counting what it skipped, so
+    a flood of bogus requests can't fill the disk with log lines."""
+
+    def __init__(self, every: float = LOG_EVERY, clock: Callable[[], float] = time.monotonic):
+        self._every, self._clock = every, clock
+        self._last: dict[str, float] = {}  # keys are fixed reasons: bounded
+        self._skipped: dict[str, int] = {}
+
+    def warning(self, key: str, msg: str, *args: object) -> None:
+        now = self._clock()
+        if now - self._last.get(key, -self._every) < self._every:
+            self._skipped[key] = self._skipped.get(key, 0) + 1
+            return
+        self._last[key] = now
+        skipped = self._skipped.pop(key, 0)
+        if skipped:
+            log.warning(msg + " (and %d more like it since the last message)", *args, skipped)
+        else:
+            log.warning(msg, *args)
+
 
 @dataclass(slots=True)
 class Services:
@@ -207,6 +232,13 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     def svc(request: Request) -> Services:
         return request.app.state.services  # type: ignore[no-any-return]
 
+    rejections = RateLimitedLog()
+
+    def refuse(reason: str, detail: str) -> JSONResponse:
+        rejections.warning(reason, "rejected a request to /alexa: %s", detail)
+        METRICS.alexa_rejected.labels(reason).inc()
+        return JSONResponse({"error": "bad request"}, status_code=400)
+
     @app.get("/")
     async def root() -> dict[str, str]:
         return {"name": "echo-tunes", "status": "running"}
@@ -220,23 +252,24 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     async def alexa(request: Request) -> Response:
         declared = request.headers.get("content-length")
         if declared is not None and (not declared.isdigit() or int(declared) > MAX_BODY_BYTES):
-            METRICS.alexa_rejected.labels("too_large").inc()
-            return JSONResponse({"error": "bad request"}, status_code=400)
+            return refuse("too_large", "request too large")
         # Read in pieces and stop at the limit: a chunked request has no Content-Length,
-        # and the header can't be trusted anyway.
+        # and the header can't be trusted anyway. And within a time limit: a client sending
+        # a byte now and then would otherwise hold the connection forever.
         body = bytearray()
-        async for chunk in request.stream():
-            body += chunk
-            if len(body) > MAX_BODY_BYTES:
-                METRICS.alexa_rejected.labels("too_large").inc()
-                return JSONResponse({"error": "bad request"}, status_code=400)
+        try:
+            async with asyncio.timeout(BODY_READ_TIMEOUT):
+                async for chunk in request.stream():
+                    body += chunk
+                    if len(body) > MAX_BODY_BYTES:
+                        return refuse("too_large", "request too large")
+        except TimeoutError:
+            return refuse("slow_body", "the request body arrived too slowly")
         s = svc(request)
         try:
             envelope = await s.verifier.verify_async(dict(request.headers), bytes(body))
         except RequestRejected as exc:
-            log.warning("rejected a request to /alexa: %s", exc)
-            METRICS.alexa_rejected.labels(exc.reason).inc()
-            return JSONResponse({"error": "bad request"}, status_code=400)
+            return refuse(exc.reason, str(exc))
         METRICS.alexa_request(str((envelope.get("request") or {}).get("type", "")))
         return JSONResponse(await s.skill.handle(envelope))
 
@@ -263,7 +296,9 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             s.relay.slots.release(token)
             log.warning("stream %s: %s", video_id, exc)
             METRICS.streams.labels("range_error" if exc.status == 416 else "youtube_error").inc()
-            headers = {"Content-Range": "bytes */*"} if exc.status == 416 else None
+            headers = None
+            if exc.status == 416:  # RFC 9110: say how big the file is
+                headers = {"Content-Range": f"bytes */{exc.total if exc.total else '*'}"}
             return Response(status_code=exc.status, headers=headers)
         except BaseException as exc:
             s.relay.slots.release(token)

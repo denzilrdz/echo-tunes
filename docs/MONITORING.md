@@ -80,11 +80,11 @@ scrape_configs:
 | `echo_tunes_build_info{version}` | info | Running version |
 | `echo_tunes_start_time_seconds` | gauge | Start time (uptime = `time() - this`) |
 | `echo_tunes_alexa_requests_total{type}` | counter | Verified Alexa requests: `LaunchRequest`, `IntentRequest`, `AudioPlayer`, `PlaybackController`, ... |
-| `echo_tunes_alexa_rejected_total{reason}` | counter | Refused requests: `signature`, `certificate`, `timestamp`, `wrong_skill`, `too_large`, `missing_signature` |
+| `echo_tunes_alexa_rejected_total{reason}` | counter | Refused requests: `signature`, `certificate` (also: too many certificate downloads at once), `timestamp`, `wrong_skill`, `too_large`, `missing_signature`, `slow_body` (body not received within 10 s) |
 | `echo_tunes_intents_total{intent}` | counter | Voice commands (`PlayIntent`, `AMAZON.NextIntent`, ...) |
 | `echo_tunes_songs_started_total` | counter | Songs an Echo started |
 | `echo_tunes_playback_failures_total` | counter | Songs an Echo couldn't play |
-| `echo_tunes_streams_total{outcome}` | counter | Audio requests: `ok` (sent in full), `cut_short` (YouTube ended early), `client_gone`, `client_stalled` (stopped reading for 30 s), `too_many` (stream limit), `bad_link`, `youtube_error`, `range_error`, `error` |
+| `echo_tunes_streams_total{outcome}` | counter | Audio requests: `ok` (sent in full), `cut_short` (YouTube ended early), `client_gone`, `client_stalled` (stopped reading for 30 s, or read under 4 KB/s for a minute), `cut` (cut on purpose by the player's experimental *Skip now*), `too_many` (stream limit), `bad_link`, `youtube_error`, `range_error`, `error` |
 | `echo_tunes_stream_bytes_total` | counter | Audio bytes relayed |
 | `echo_tunes_resolve_seconds` | histogram | Time to get a song's audio link from YouTube |
 | `echo_tunes_resolve_failures_total` | counter | Audio links that couldn't be fetched |

@@ -30,6 +30,12 @@ WARMUP_SECONDS = 8.0  # how long a fresh YouTube link may answer 403 before it w
 RETRY_EVERY = 0.3
 MAX_RETRIES = 3  # network errors in a row tolerated before giving up
 SEND_TIMEOUT = 30.0  # a client that reads nothing for this long is dropped
+# A client that reads, but only a trickle, would hold its slot for the whole song: after a
+# grace period, each RATE_WINDOW must move at least MIN_RATE bytes per second on average.
+# Lenient: an Echo reads in bursts and at least at the song's bitrate (128 kbps = 16 KB/s).
+RATE_GRACE = 30.0
+RATE_WINDOW = 60.0
+MIN_RATE = 4 * 1024
 MAX_STREAMS = 24  # open audio streams in total (each holds one connection to YouTube)
 MAX_STREAMS_PER_LINK = 3  # an Echo opens one or two per song; more is someone else
 
@@ -119,6 +125,8 @@ class AudioResponse(StreamingResponse):
         )
         sent = 0
         body = self.body_iterator
+        started = time.monotonic()
+        window_at, window_sent = started + RATE_GRACE, 0  # the first window starts after grace
         try:
             async for chunk in body:
                 if self._abort is not None and self._abort.is_set():
@@ -134,6 +142,15 @@ class AudioResponse(StreamingResponse):
                     self.outcome = "client_stalled"
                     return
                 sent += len(chunk)
+                now = time.monotonic()
+                if now >= window_at + RATE_WINDOW:
+                    if (sent - window_sent) / (now - window_at) < MIN_RATE:
+                        log.info("dropping a stream whose client reads too slowly")
+                        self.outcome = "client_stalled"
+                        return
+                    window_at, window_sent = now, sent
+                elif now < window_at:
+                    window_sent = sent  # still in the grace period
         except (asyncio.CancelledError, OSError):
             self.outcome = "client_gone"
             raise
@@ -146,9 +163,10 @@ class AudioResponse(StreamingResponse):
 
 
 class StreamError(Exception):
-    def __init__(self, status: int, message: str) -> None:
+    def __init__(self, status: int, message: str, total: int | None = None) -> None:
         super().__init__(message)
         self.status = status
+        self.total = total  # the file's size, for a 416's Content-Range
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,13 +206,13 @@ def parse_range(header: str | None, total: int) -> ByteRange:
     if not first:  # suffix range: the last N bytes
         n = int(last)
         if n == 0 or total == 0:
-            raise StreamError(416, "range not satisfiable")
+            raise StreamError(416, "range not satisfiable", total)
         return ByteRange(max(0, total - n), total - 1, total, partial=True)
     start = int(first)
     if last and int(last) < start:
         return whole  # invalid, so ignored
     if start >= total:
-        raise StreamError(416, "range not satisfiable")
+        raise StreamError(416, "range not satisfiable", total)
     end = min(int(last) if last else total - 1, total - 1)
     return ByteRange(start, end, total, partial=True)
 
@@ -273,8 +291,12 @@ class StreamRelay:
 
     async def _probe(self, source: AudioSource) -> httpx.Response:
         headers = {**source.headers, "Range": "bytes=0-0"}
-        async with self._probe_client.stream("GET", source.url, headers=headers) as resp:
-            return resp  # body (1 byte) is discarded when the context closes
+        try:
+            async with self._probe_client.stream("GET", source.url, headers=headers) as resp:
+                return resp  # body (1 byte) is discarded when the context closes
+        except httpx.TransportError as exc:
+            # A network problem, not a bug: one log line (by the caller), not a traceback.
+            raise StreamError(502, f"could not reach YouTube ({type(exc).__name__})") from exc
 
     async def _wait_until_ready(self, video_id: str, source: AudioSource) -> None:
         deadline = source.resolved_at + WARMUP_SECONDS

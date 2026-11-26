@@ -10,7 +10,10 @@ Implements Amazon's rules for skills hosted as a web service
 5. the skill ID is one of yours.
 
 Downloaded certificates are kept in a tiny bounded cache, and downloads have a timeout and a size
-limit, so a flood of bogus requests can't grow memory or hang the server.
+limit, so a flood of bogus requests can't grow memory or hang the server. The cheap checks
+(JSON, timestamp, skill ID) run *before* any download, so a forged request must at least name
+your skill to cost a download, and at most ``MAX_PENDING_DOWNLOADS`` downloads wait or run at
+once. A request whose certificate is already cached never waits behind them.
 """
 
 from __future__ import annotations
@@ -52,10 +55,12 @@ SIGNING_NAME = "echo-api.amazon.com"
 MAX_SKEW_SECONDS = 150
 MAX_CERT_BYTES = 64 * 1024
 MAX_BODY_BYTES = 256 * 1024
+MAX_PENDING_DOWNLOADS = 4  # certificate downloads running or queued; more are refused
 
 
 REASONS = (
     "too_large", "missing_signature", "signature", "certificate", "timestamp", "wrong_skill",
+    "slow_body",
 )  # fmt: skip
 
 
@@ -144,10 +149,28 @@ class AlexaVerifier:
         self._failed: BoundedTTLCache[str, str] = BoundedTTLCache(64, ttl=FAILED_CERT_TTL)
         # Its own threads: a flood of fake requests can't starve YouTube Music calls.
         self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="alexa-verify")
+        self._pending = 0  # downloads waiting for or running in the pool (event loop only)
 
     async def verify_async(self, headers: Mapping[str, str], body: bytes) -> dict[str, Any]:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, self.verify, headers, body)
+        """Like verify(), without blocking the event loop on a certificate download.
+
+        A cached certificate is checked right here (a millisecond of CPU), so genuine
+        requests never queue behind downloads; a new certificate URL is fetched in the pool,
+        and only if fewer than MAX_PENDING_DOWNLOADS are already waiting.
+        """
+        url, signature, envelope = self._precheck(headers, body)
+        if self._certs.get(url) is not None:
+            return self._finish(url, signature, body, envelope)
+        if self._pending >= MAX_PENDING_DOWNLOADS:
+            raise RequestRejected("too many certificate downloads at once")
+        self._pending += 1
+        try:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                self._pool, self._finish, url, signature, body, envelope
+            )
+        finally:
+            self._pending -= 1
 
     def close(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
@@ -157,6 +180,15 @@ class AlexaVerifier:
 
         Blocking (may download a certificate): call it from a worker thread.
         """
+        url, signature, envelope = self._precheck(headers, body)
+        return self._finish(url, signature, body, envelope)
+
+    def _precheck(self, headers: Mapping[str, str], body: bytes) -> tuple[str, str, dict[str, Any]]:
+        """Everything that needs no certificate: size, headers, URL, JSON, timestamp, skill.
+
+        Safe to do first: a forged body could pass these, but never the signature check that
+        follows (and timestamp and skill are checked again after it).
+        """
         if len(body) > MAX_BODY_BYTES:
             raise RequestRejected("request too large", "too_large")
         lower = {k.lower(): v for k, v in headers.items()}
@@ -164,8 +196,21 @@ class AlexaVerifier:
         signature = lower.get("signature-256")
         if not cert_url or not signature:
             raise RequestRejected("missing signature headers", "missing_signature")
+        url = check_cert_url(cert_url)
+        try:
+            envelope = json.loads(body)
+        except ValueError as exc:
+            raise RequestRejected("body is not JSON", "signature") from exc
+        if not isinstance(envelope, dict):
+            raise RequestRejected("body is not a JSON object", "signature")
+        self._check_timestamp(envelope)
+        self._check_skill(envelope)
+        return url, signature, envelope
 
-        leaf = self._signing_cert(check_cert_url(cert_url))
+    def _finish(
+        self, url: str, signature: str, body: bytes, envelope: dict[str, Any]
+    ) -> dict[str, Any]:
+        leaf = self._signing_cert(url)
         try:
             sig = base64.b64decode(signature, validate=True)
         except (binascii.Error, ValueError) as exc:
@@ -177,11 +222,7 @@ class AlexaVerifier:
             key.verify(sig, body, padding.PKCS1v15(), SHA256())
         except InvalidSignature as exc:
             raise RequestRejected("signature does not match the body", "signature") from exc
-
-        try:
-            envelope: dict[str, Any] = json.loads(body)
-        except ValueError as exc:
-            raise RequestRejected("body is not JSON", "signature") from exc
+        # Again, now that the body is known to be Amazon's (and a download took time).
         self._check_timestamp(envelope)
         self._check_skill(envelope)
         return envelope

@@ -75,6 +75,13 @@ def test_logout_removes_the_token(env: Path, capsys: pytest.CaptureFixture[str])
     assert "Signed out" in capsys.readouterr().out
 
 
+def test_public_server_caps_connections(env: Path) -> None:
+    """Audit: the public server accepted any number of connections."""
+    cfg = cli.public_config(object(), cli._settings())
+    assert cfg.limit_concurrency == cli.PUBLIC_MAX_CONNECTIONS == 64
+    assert cfg.access_log is False and cfg.server_header is False
+
+
 def test_short_body_message_is_quieted() -> None:
     import logging
 
