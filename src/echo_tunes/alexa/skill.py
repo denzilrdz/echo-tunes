@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import weakref
 from dataclasses import dataclass
 from typing import Any
 
 from echo_tunes import tokens
 from echo_tunes.alexa import responses as r
+from echo_tunes.history import History
+from echo_tunes.metrics import METRICS
 from echo_tunes.music.catalog import Catalog, Collection, NotSignedIn, Track
 from echo_tunes.music.resolver import AudioResolver
 from echo_tunes.player.state import PlayerState
@@ -41,9 +44,15 @@ class SkillConfig:
 
 class Skill:
     def __init__(
-        self, cfg: SkillConfig, catalog: Catalog, resolver: AudioResolver, store: StateStore
+        self,
+        cfg: SkillConfig,
+        catalog: Catalog,
+        resolver: AudioResolver,
+        store: StateStore,
+        history: History | None = None,
     ) -> None:
         self.cfg = cfg
+        self.history = history
         self.catalog = catalog
         self.resolver = resolver
         self.store = store
@@ -64,13 +73,18 @@ class Skill:
         async with lock:
             state = self.store.get(device)
             try:
-                response = await self._dispatch(kind, request, envelope, state)
+                response = await self._dispatch(kind, request, envelope, state, device)
             finally:
                 self.store.put(device, state)
         return response
 
     async def _dispatch(
-        self, kind: str, request: dict[str, Any], envelope: dict[str, Any], state: PlayerState
+        self,
+        kind: str,
+        request: dict[str, Any],
+        envelope: dict[str, Any],
+        state: PlayerState,
+        device: str,
     ) -> r.Response:
         if kind == "LaunchRequest":
             return r.build(
@@ -81,7 +95,9 @@ class Skill:
         if kind == "IntentRequest":
             return await self._intent(request, envelope, state)
         if kind.startswith("AudioPlayer."):
-            return await self._audio_event(kind.removeprefix("AudioPlayer."), request, state)
+            return await self._audio_event(
+                kind.removeprefix("AudioPlayer."), request, state, device
+            )
         if kind.startswith("PlaybackController."):
             return await self._button(kind.removeprefix("PlaybackController."), envelope, state)
         if kind == "System.ExceptionEncountered":
@@ -99,6 +115,7 @@ class Skill:
         intent = request.get("intent") or {}
         name = str(intent.get("name", ""))
         query = _slot(intent, "query")
+        METRICS.intent(name)
 
         match name:
             case "PlayIntent" | "PlayRadioIntent":
@@ -153,6 +170,7 @@ class Skill:
             track = await self.catalog.search_song(query)
         except Exception:
             log.exception("search failed")
+            METRICS.youtube_errors.inc()
             return r.build("Sorry, I couldn't reach YouTube Music. Please try again.")
         if track is None:
             return r.build(f"Sorry, I couldn't find {query}.")
@@ -164,6 +182,8 @@ class Skill:
             log.warning("radio for %s failed: %s", track.video_id, exc)
         state.replace([track, *radio], self.cfg.max_queue)
         state.failures = 0
+        state.source = f'{"Radio for" if radio_intro else "Asked for"} "{query}"'
+        state.source_kind = "radio" if radio_intro else "ask"
         intro = "Starting radio based on" if radio_intro else "Playing"
         return r.build(f"{intro} {track.spoken}.", directives=[self._play(state, 0)])
 
@@ -188,6 +208,7 @@ class Skill:
             return r.build(SIGN_IN_FIRST)
         except Exception:
             log.exception("loading %s failed", name)
+            METRICS.youtube_errors.inc()
             return r.build("Sorry, I couldn't reach YouTube Music. Please try again.")
         if coll is None:
             what = f"a playlist called {wanted}" if name == "PlayPlaylistIntent" else "that mix"
@@ -197,6 +218,11 @@ class Skill:
         self.resolver.warm(coll.tracks[0].video_id)
         state.replace(coll.tracks, self.cfg.max_queue)
         state.failures = 0
+        state.source = {
+            "PlayLikedIntent": "Liked songs",
+            "PlayPlaylistIntent": f"Playlist: {coll.title}",
+        }.get(name, f"Mix: {coll.title}")
+        state.source_kind = "library"
         return r.build(f"Playing {coll.title}.", directives=[self._play(state, 0)])
 
     async def _like(self, state: PlayerState) -> r.Response:
@@ -247,20 +273,35 @@ class Skill:
 
     # --- playback events (no speech allowed) --------------------------------------------------
     async def _audio_event(
-        self, event: str, request: dict[str, Any], state: PlayerState
+        self, event: str, request: dict[str, Any], state: PlayerState, device: str
     ) -> r.Response:
         token = request.get("token")
         idx = state.index_from_token(token)
+        offset = int(request.get("offsetInMilliseconds") or 0)
+        track = state.tracks[idx] if idx is not None else None
         match event:
             case "PlaybackStarted":
-                if idx is not None:
+                if idx is not None and track is not None:
                     state.index, state.offset_ms, state.failures = idx, 0, 0
+                    self._now(state, playing=True, position_ms=offset)
+                    METRICS.songs_started.inc()
+                    if self.history:
+                        self.history.started(device, track, state.source_of(idx))
                     self._warm_next(state)
                     self._in_background(self.catalog.played(state.tracks[idx].video_id))
             case "PlaybackStopped":
-                if idx is not None:
+                if idx is not None and track is not None:
                     state.index = idx
-                    state.offset_ms = int(request.get("offsetInMilliseconds") or 0)
+                    state.offset_ms = offset
+                    self._now(state, playing=False, position_ms=offset)
+                    if self.history:
+                        self.history.ended(device, track.video_id, "stopped", offset)
+            case "PlaybackFinished":
+                if idx is not None and track is not None:
+                    self._now(state, playing=False, position_ms=offset)
+                    if self.history:
+                        full = track.duration * 1000 if track.duration else None
+                        self.history.ended(device, track.video_id, "finished", full or offset)
             case "PlaybackNearlyFinished":
                 if idx is None:
                     return r.empty()
@@ -277,9 +318,13 @@ class Skill:
                 log.warning(
                     "Echo could not play %s: %s", token, err.get("message") or err.get("type")
                 )
-                if idx is None:
+                METRICS.playback_failures.inc()
+                if idx is None or track is None:
                     return r.empty()
-                self.resolver.invalidate(state.tracks[idx].video_id)
+                self._now(state, playing=False, position_ms=offset)
+                if self.history:
+                    self.history.ended(device, track.video_id, "failed", offset)
+                self.resolver.invalidate(track.video_id)
                 state.index = idx
                 state.failures += 1
                 if state.failures >= MAX_FAILURES_IN_A_ROW:
@@ -327,9 +372,17 @@ class Skill:
             expected_previous=expected_previous,
         )
 
-    def stream_url(self, video_id: str) -> str:
-        t = tokens.make(self.cfg.stream_secret, video_id, self.cfg.stream_ttl_seconds)
+    def stream_url(self, video_id: str, ttl_seconds: int | None = None) -> str:
+        t = tokens.make(
+            self.cfg.stream_secret, video_id, ttl_seconds or self.cfg.stream_ttl_seconds
+        )
         return f"{self.cfg.base_url}/stream/{t}.m4a"
+
+    @staticmethod
+    def _now(state: PlayerState, *, playing: bool, position_ms: int) -> None:
+        state.playing = playing
+        state.position_ms = position_ms
+        state.since = time.time()
 
     def _in_background(self, coro: Any) -> None:
         task = asyncio.create_task(coro)

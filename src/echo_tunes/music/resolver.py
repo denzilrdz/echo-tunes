@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 from echo_tunes.cache import BoundedTTLCache
+from echo_tunes.metrics import METRICS
 from echo_tunes.music import extract
 
 log = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class Resolver:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[AudioSource] = loop.create_future()
         self._inflight[video_id] = future
+        t0 = time.monotonic()
         try:
             raw = await asyncio.wait_for(
                 loop.run_in_executor(
@@ -84,9 +86,12 @@ class Resolver:
             )
             ttl = max(60.0, source.expires - time.time() - EXPIRY_MARGIN)
             self._cache.set(video_id, source, ttl=ttl)
+            METRICS.resolved(time.monotonic() - t0)
             future.set_result(source)
             return source
         except BaseException as exc:
+            if isinstance(exc, Exception):
+                METRICS.resolve_failed(exc)
             future.set_exception(exc)
             future.exception()  # mark retrieved so asyncio doesn't warn when nobody else waits
             raise
