@@ -13,7 +13,10 @@ const el = (tag, props = {}, ...kids) => {
   for (const kid of kids) if (kid != null) n.append(kid);
   return n;
 };
+// The public demo (GitHub Pages) has no server: demo.js answers these calls with sample data.
+const DEMO = typeof window.ECHO_TUNES_DEMO === "function" ? window.ECHO_TUNES_DEMO : null;
 const api = async (path) => {
+  if (DEMO) return DEMO(path);
   const r = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!r.ok && r.status !== 503) throw new Error(`${path}: ${r.status}`);
   return r.json();
@@ -235,11 +238,11 @@ function renderMonitor(h) {
     tile("YouTube audio", h.youtube, h.last_audio_ok ? `last OK ${ago(h.last_audio_ok)}` : "no songs yet"),
     tile("Uptime", mmss(h.uptime_seconds * 1000), `memory ${h.memory_mb} MB`),
     tile("History", h.history_plays, `plays kept · ${h.history_days} days`));
-  const base = location.origin;
+  const base = DEMO ? "http://your-server:8081" : location.origin;
   const recipes = [
     ["Uptime Kuma: is it up and healthy?", "Monitor type: HTTP(s) - Json Query", `URL:            ${base}/api/health\nJSON query:     status\nExpected value: ok\nInterval:       60 s`],
     ["Uptime Kuma: is the public side reachable?", "Monitor type: HTTP(s) (from outside your network if you can)", "URL: https://<your public address>/healthz"],
-    ["Prometheus scrape config", "Then graph it in Grafana; metric names start with echo_tunes_.", `- job_name: echo-tunes\n  scrape_interval: 30s\n  metrics_path: /metrics\n  static_configs:\n    - targets: ["${location.host}"]${location.protocol === "https:" ? "\n  scheme: https" : ""}`],
+    ["Prometheus scrape config", "Then graph it in Grafana; metric names start with echo_tunes_.", `- job_name: echo-tunes\n  scrape_interval: 30s\n  metrics_path: /metrics\n  static_configs:\n    - targets: ["${DEMO ? "your-server:8081" : location.host}"]${!DEMO && location.protocol === "https:" ? "\n  scheme: https" : ""}`],
     ["Home Assistant: now-playing sensor", "configuration.yaml (REST sensor)", `rest:\n  - resource: ${base}/api/now\n    scan_interval: 15\n    sensor:\n      - name: "echo-tunes now playing"\n        value_template: "{{ value_json.devices[0].current.title if value_json.devices else 'Nothing' }}"`],
   ];
   $("#recipes").replaceChildren(...recipes.flatMap(([title, note, code]) => {
@@ -284,6 +287,7 @@ $("#test-play").addEventListener("click", async () => {
   status.textContent = "Getting the song (a few seconds the first time)…";
   try {
     const t = await api("/api/test-play");
+    if (t.demo) { status.textContent = "This is the demo: on your own server, a song plays here through your public address."; return; }
     audio.hidden = false;
     audio.src = t.url;
     audio.onplaying = () => { status.textContent = `▶ Playing “${t.title}” by ${t.artist} via ${new URL(t.url).host}. It works.`; };
