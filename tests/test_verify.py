@@ -111,12 +111,10 @@ def test_cert_url_allowed(url: str) -> None:
     assert check_cert_url(url) == "https://s3.amazonaws.com/echo.api/echo-api-cert.pem"
 
 
-@pytest.mark.parametrize(
-    "name", ["echo-api-cert-12.pem", "echo-api-cert-12-ats.pem", "echo-api-cert-12345.pem"]
-)
-def test_amazons_real_file_names_are_accepted(name: str) -> None:
+@pytest.mark.parametrize("suffix", ["-12", "-12-ats", "-12345"])
+def test_amazons_real_file_names_are_accepted(suffix: str) -> None:
     """0.2.2 refused every real request: Amazon's file names don't fit a fixed pattern."""
-    url = f"https://s3.amazonaws.com/echo.api/{name}"
+    url = f"https://s3.amazonaws.com/echo.api/echo-api-cert{suffix}.pem"
     assert check_cert_url(url) == url
 
 
