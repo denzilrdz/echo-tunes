@@ -32,6 +32,14 @@ uv run echo-tunes serve
 
 Or build the image: `docker build -t echo-tunes:dev .`
 
+## How changes land
+
+`main` is protected: changes arrive through a pull request (squash-merged), CI (`quality` and
+`docker`) must pass, CodeQL must report no high-severity findings, review threads must be
+resolved, and commits must be signed
+([how to sign commits](https://docs.github.com/authentication/managing-commit-signature-verification)).
+Workflows from first-time contributors run after a maintainer approves them.
+
 ## Guidelines
 
 - **Dependencies** are managed with uv: `uv add <package>` (or `uv add --dev`), and commit

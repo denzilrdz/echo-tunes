@@ -16,6 +16,7 @@ jobs:
   image:
     name: image
     runs-on: ubuntu-24.04
+    environment: release # only v* tags may deploy to it (Settings -> Environments)
     timeout-minutes: 45
     permissions:
       contents: write # create the GitHub release

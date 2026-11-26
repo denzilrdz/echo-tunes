@@ -1,0 +1,22 @@
+# Sections for GitHub's generated release notes (labels come from the issue templates,
+# Dependabot and the daily yt-dlp workflow).
+changelog:
+  exclude:
+    labels: [duplicate, invalid, wontfix]
+  categories:
+    - title: Security
+      labels: [security]
+    - title: New features
+      labels: [enhancement]
+    - title: Bug fixes
+      labels: [bug]
+    - title: YouTube / yt-dlp updates
+      labels: [yt-dlp]
+    - title: Voice model and languages
+      labels: [voice-model]
+    - title: Documentation
+      labels: [documentation]
+    - title: Dependencies
+      labels: [dependencies, python, docker, github_actions]
+    - title: Other changes
+      labels: ["*"]
