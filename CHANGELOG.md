@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-26
+
+### Added
+
+- **Private dashboard** on a second port (`ECHO_TUNES_DASHBOARD_PORT`, default 8081): now playing
+  and up next per Echo with live progress, play history with search and filters, stats (plays,
+  listening time, top songs and artists, plays per day), a monitoring page with copy-ready
+  settings, and a **setup checklist with a Test play button**. Read-only, strict security
+  headers, optional password. See docs/DASHBOARD.md.
+- **Play history** in SQLite, kept for `ECHO_TUNES_HISTORY_DAYS` (default 15) and pruned
+  automatically; records why each song played and whether it finished, was skipped, paused or
+  failed.
+- **Prometheus metrics** at `/metrics` and a JSON **health check** at `/api/health` for Uptime
+  Kuma and similar tools. See docs/MONITORING.md.
+- `ECHO_TUNES_DEVICE_NAMES` for friendly Echo names.
+- `echo-tunes doctor` and the dashboard share one set of checks, now including "has Alexa
+  reached this server?" and the age of yt-dlp.
+
 ### Fixed
 
 - The spoken name is now **"my tunes"** ("Alexa, ask my tunes to play …"). Amazon refuses to
@@ -52,5 +70,6 @@ First release.
 - CI: lint, type check, tests including a memory soak test, privacy check, secret scan,
   workflow audit, Docker smoke test; multi-arch release workflow; daily yt-dlp update PRs.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/denzilrdz/echo-tunes/releases/tag/v0.1.0

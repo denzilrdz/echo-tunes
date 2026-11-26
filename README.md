@@ -16,6 +16,8 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 [Public HTTPS options](docs/PUBLIC_HTTPS.md) ·
 [Voice commands](docs/VOICE_COMMANDS.md) ·
 [Google sign-in](docs/GOOGLE_SIGN_IN.md) ·
+[Dashboard](docs/DASHBOARD.md) ·
+[Monitoring](docs/MONITORING.md) ·
 [How it works](docs/ARCHITECTURE.md) ·
 [Troubleshooting](docs/TROUBLESHOOTING.md)
 
@@ -39,6 +41,8 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 | **Runs anywhere**      | Home server behind a tunnel (Tailscale Funnel, Cloudflare Tunnel) or any server with a public IP. Ready examples. |
 | **Secure by default**  | Every request's Amazon signature and your skill ID are checked; audio links are signed and expire.                |
 | **Flat memory**        | Bounded caches, streamed audio and recycled worker processes: memory doesn't creep up over weeks of uptime.       |
+| **Private dashboard**  | Now playing and up next per Echo, 15-day play history, stats, a setup checklist and a "test play" button. |
+| **Bring your own monitoring** | Prometheus `/metrics`, a JSON health check for Uptime Kuma, and a JSON API for Home Assistant.            |
 | **Self-checking**      | `echo-tunes doctor` checks configuration, YouTube access and your public address in one go.                      |
 | **Kept up to date**    | A daily job picks up new yt-dlp releases, so YouTube changes are fixed quickly.                                  |
 
@@ -123,6 +127,10 @@ docker compose exec -it echo-tunes echo-tunes login
 
 See [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
 
+**6. Open the dashboard** on the private port (`http://<server>:8081`, or tailnet-only
+`https://echo-tunes.<tailnet>.ts.net:8443` with the Funnel example): what's playing, history,
+stats, and a setup checklist with a *Test play* button. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
+
 ## How it works
 
 ```mermaid
@@ -168,6 +176,10 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_RESOLVER_WORKERS`          | `2`        | Parallel workers that prepare audio links.                                  |
 | `ECHO_TUNES_RESOLVER_TASKS_PER_WORKER` | `25`       | Songs a worker prepares before a fresh one replaces it (frees memory).      |
 | `ECHO_TUNES_STREAM_LINK_TTL_HOURS`     | `12`       | How long an audio link given to the Echo stays valid.                       |
+| `ECHO_TUNES_DASHBOARD_PORT`            | `8081`     | Private dashboard, `/metrics` and JSON API (`0` = off). Never publish it. |
+| `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Optional password for the dashboard (user `admin`).                         |
+| `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none).                             |
+| `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `BEWY4D23ORJQ=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
 | `ECHO_TUNES_LOG_LEVEL`                 | `info`     | `debug`, `info`, `warning` or `error`.                                      |
 | `ECHO_TUNES_PORT`                      | `8080`     | Port inside the container.                                                  |
 
@@ -199,7 +211,8 @@ content, so each person runs their own private copy. That's also why it's self-h
 
 - [x] Voice playback, radio, queue, playback controls, Docker image, docs
 - [x] Sign in with Google: your playlists, liked songs, mixes and personal radio
-- [ ] v0.3: a small setup page with a checklist and a "test play" button
+- [x] Private dashboard: now playing, history, stats, setup checklist and test play
+- [x] Prometheus metrics and a health check for Uptime Kuma
 - [ ] More languages for the voice model (German, Spanish, French, ...): contributions welcome
 
 ## Contributing
