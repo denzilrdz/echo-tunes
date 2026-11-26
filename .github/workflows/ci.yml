@@ -6,6 +6,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The daily yt-dlp job starts this for its pull request: PRs opened with the workflow token
+  # don't trigger pull_request runs, and the required checks must still run.
+  workflow_dispatch:
 
 permissions: {}
 
@@ -35,7 +38,7 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo:ro"
           zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854
           git /repo --no-banner --redact
-      - run: uv sync --frozen
+      - run: uv sync --locked
       - name: Lint workflows (zizmor + actionlint)
         env:
           GH_TOKEN: ${{ github.token }} # read-only: lets zizmor check advisories and impostor commits
@@ -53,7 +56,14 @@ jobs:
       - name: Tests (Python 3.15, the Docker image's version)
         env:
           UV_PROJECT_ENVIRONMENT: .venv-315
-        run: uv run --python 3.15 pytest -q
+        run: uv run --locked --python 3.15 pytest -q
+      - name: Tests at the lowest allowed dependency versions
+        run: |
+          uv venv -q -p 3.13 .venv-lowest
+          uv pip compile -q pyproject.toml --group dev --resolution lowest-direct -p 3.13 -o lowest.txt
+          uv pip install -q -p .venv-lowest -r lowest.txt
+          uv pip install -q -p .venv-lowest --no-deps .
+          .venv-lowest/bin/python -m pytest -q -p no:cacheprovider
 
   docker:
     name: docker

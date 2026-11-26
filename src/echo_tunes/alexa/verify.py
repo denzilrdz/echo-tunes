@@ -43,7 +43,8 @@ CERT_HOST = "s3.amazonaws.com"
 CERT_PATH_PREFIX = "/echo.api/"
 # Amazon's signing certificates are named echo-api-cert.pem or echo-api-cert-<n>.pem. Accepting
 # only that keeps unsigned requests from making the server download arbitrary S3 objects.
-CERT_FILE = re.compile(r"^/echo\.api/echo-api-cert(-\d{1,4})?\.pem$")
+# ASCII digits only and a full match (``$`` would also accept a trailing newline).
+CERT_FILE = re.compile(r"/echo\.api/echo-api-cert(-[0-9]{1,4})?\.pem", re.ASCII)
 FAILED_CERT_TTL = 600.0
 SIGNING_NAME = "echo-api.amazon.com"
 MAX_SKEW_SECONDS = 150
@@ -51,8 +52,21 @@ MAX_CERT_BYTES = 64 * 1024
 MAX_BODY_BYTES = 256 * 1024
 
 
+REASONS = (
+    "too_large", "missing_signature", "signature", "certificate", "timestamp", "wrong_skill",
+)  # fmt: skip
+
+
 class RequestRejected(Exception):
-    """The request is not a genuine, fresh Alexa request for this skill."""
+    """The request is not a genuine, fresh Alexa request for this skill.
+
+    ``reason`` is one of REASONS: a fixed metric label, set where the rejection happens.
+    """
+
+    def __init__(self, message: str, reason: str = "certificate") -> None:
+        super().__init__(message)
+        assert reason in REASONS, reason
+        self.reason = reason
 
 
 def check_cert_url(url: str) -> str:
@@ -68,7 +82,7 @@ def check_cert_url(url: str) -> str:
         or (parts.hostname or "").lower() != CERT_HOST
         or port not in (None, 443)
         or not path.startswith(CERT_PATH_PREFIX)
-        or not CERT_FILE.match(path)
+        or not CERT_FILE.fullmatch(path)
         or parts.query
         or parts.fragment
         or parts.username
@@ -142,30 +156,30 @@ class AlexaVerifier:
         Blocking (may download a certificate): call it from a worker thread.
         """
         if len(body) > MAX_BODY_BYTES:
-            raise RequestRejected("request too large")
+            raise RequestRejected("request too large", "too_large")
         lower = {k.lower(): v for k, v in headers.items()}
         cert_url = lower.get("signaturecertchainurl")
         signature = lower.get("signature-256")
         if not cert_url or not signature:
-            raise RequestRejected("missing signature headers")
+            raise RequestRejected("missing signature headers", "missing_signature")
 
         leaf = self._signing_cert(check_cert_url(cert_url))
         try:
             sig = base64.b64decode(signature, validate=True)
         except (binascii.Error, ValueError) as exc:
-            raise RequestRejected("signature is not base64") from exc
+            raise RequestRejected("signature is not base64", "signature") from exc
         key = leaf.public_key()
         if not isinstance(key, rsa.RSAPublicKey):
-            raise RequestRejected("unexpected signing key type")
+            raise RequestRejected("unexpected signing key type", "signature")
         try:
             key.verify(sig, body, padding.PKCS1v15(), SHA256())
         except InvalidSignature as exc:
-            raise RequestRejected("signature does not match the body") from exc
+            raise RequestRejected("signature does not match the body", "signature") from exc
 
         try:
             envelope: dict[str, Any] = json.loads(body)
         except ValueError as exc:
-            raise RequestRejected("body is not JSON") from exc
+            raise RequestRejected("body is not JSON", "signature") from exc
         self._check_timestamp(envelope)
         self._check_skill(envelope)
         return envelope
@@ -205,15 +219,15 @@ class AlexaVerifier:
         try:
             sent = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
         except ValueError as exc:
-            raise RequestRejected("missing or bad timestamp") from exc
+            raise RequestRejected("missing or bad timestamp", "timestamp") from exc
         if sent.tzinfo is None:
             sent = sent.replace(tzinfo=UTC)
         if abs((self._clock() - sent).total_seconds()) > MAX_SKEW_SECONDS:
-            raise RequestRejected("request is too old")
+            raise RequestRejected("request is too old", "timestamp")
 
     def _check_skill(self, envelope: dict[str, Any]) -> None:
         ctx_app = (((envelope.get("context") or {}).get("System") or {}).get("application")) or {}
         sess_app = ((envelope.get("session") or {}).get("application")) or {}
         app_id = ctx_app.get("applicationId") or sess_app.get("applicationId")
         if app_id not in self._skill_ids:
-            raise RequestRejected("request is for a different skill")
+            raise RequestRejected("request is for a different skill", "wrong_skill")

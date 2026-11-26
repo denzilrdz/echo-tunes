@@ -108,3 +108,15 @@ def test_pause_and_resume_is_one_play() -> None:
     [row] = h.recent()
     assert row["status"] == "finished" and h.count() == 1
     assert not h.resumed("echo-1", song(2).video_id)  # a different song is a new play
+
+
+def test_plays_per_day_use_the_viewers_time_zone() -> None:
+    """Review finding: an evening play west of UTC was counted on the next (UTC) day."""
+    import calendar
+
+    h, clock = make()
+    clock.t = calendar.timegm((2026, 11, 27, 3, 0, 0))  # 03:00 UTC = 22:00 on the 26th in UTC-5
+    h.started("echo", song(1), "Asked")
+    assert h.stats(days=7, utc_offset_min=0)["per_day"][0]["day"] == "2026-11-27"
+    assert h.stats(days=7, utc_offset_min=-300)["per_day"][0]["day"] == "2026-11-26"
+    assert h.stats(days=7, utc_offset_min=330)["per_day"][0]["day"] == "2026-11-27"

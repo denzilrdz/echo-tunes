@@ -3,7 +3,7 @@
 # examples/ (Caddy on a server with a public IP, Cloudflare Tunnel, or Tailscale Funnel).
 services:
   echo-tunes:
-    image: ghcr.io/denzilrdz/echo-tunes:0.2.1
+    image: ghcr.io/denzilrdz/echo-tunes:0.2.2
     container_name: echo-tunes
     restart: unless-stopped
     env_file: .env

@@ -37,22 +37,6 @@ KNOWN_INTENTS = frozenset(
 )  # fmt: skip
 
 
-def rejection_reason(message: str) -> str:
-    """Map a verification error to one of a few fixed label values."""
-    m = message.lower()
-    for key, words in (
-        ("too_large", ("too large",)),
-        ("missing_signature", ("missing",)),
-        ("signature", ("signature", "base64", "body is not")),
-        ("certificate", ("certificate", "cert")),
-        ("timestamp", ("old", "timestamp")),
-        ("wrong_skill", ("different skill",)),
-    ):
-        if any(w in m for w in words):
-            return key
-    return "other"
-
-
 class Metrics:
     def __init__(self) -> None:
         self.registry = CollectorRegistry(auto_describe=True)

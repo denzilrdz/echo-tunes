@@ -171,7 +171,8 @@ async function loadHistory(reset) {
 // ---------- stats ----------
 async function loadStats() {
   const f = $("#stats-filters").elements;
-  const p = new URLSearchParams({ days: f.days.value });
+  // Count days in this browser's time zone (minutes east of UTC).
+  const p = new URLSearchParams({ days: f.days.value, tz: String(-new Date().getTimezoneOffset()) });
   if (f.device.value) p.set("device", f.device.value);
   const s = await api(`/api/stats?${p}`);
   const hours = s.listened_minutes / 60;

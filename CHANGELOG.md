@@ -6,11 +6,56 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-26
+
+Fixes from a full review of 0.2.1.
+
+### Fixed
+
+- **"Shuffle", "loop on" or "loop off" part-way through a song no longer stops the music** when
+  that song ends. The Echo asks for its next song only once, usually before you speak; the
+  answer now swaps in the new next song (`REPLACE_ENQUEUED`) instead of only clearing it.
+- One YouTube lookup timing out no longer makes every other lookup in progress fail: they
+  retry once on the restarted workers. A cancelled request no longer fails others waiting on
+  the same song, and the finished lookup is kept.
+- **One stream link can no longer stop audio on every Echo.** Streams are capped per link (3)
+  and in total (24), clients that stop reading are dropped after 30 s, start-up probes have
+  their own connection pool, and the public port no longer writes stream links to its log.
+- A YouTube link that expires part-way through a song is refreshed and the song continues.
+- When the song queued *next* fails to load, the playing song is no longer cut off; when the
+  last song fails, the radio is extended.
+- "Play my second mix" (and other mix synonyms) play the right mix.
+- "Resume" after a song ended plays the next song instead of the last second of the old one.
+  Loop with a one-song queue works; shuffle off restores the original order; with shuffle on,
+  a new playlist starts on a random song.
+- Plays per day are counted in your browser's time zone, not the server's (UTC in Docker).
+- Settings: `ECHO_TUNES_LOG_LEVEL` only accepts real levels (`warn`/`trace` crashed start-up),
+  and a public URL with a path, a dashboard host with a port, a device name with a comma or a
+  missing cookies file are refused with a clear message.
+- `doctor` checks your YouTube Music library can be read, and stops Deno if it hangs.
+- The rejected-request metric gets its reason from where the request was rejected (some were
+  mislabelled). Songs cut short are counted as `cut_short`, not `ok`.
+- The Docker health check follows `ECHO_TUNES_PORT`.
+- Byte ranges follow RFC 9110 (unknown or invalid ranges get the whole file, not a 416).
+
 ### Changed
 
+- Requires pydantic-settings 2.7 or later (it was already needed). CI also tests the lowest
+  allowed versions.
+- The data folder defaults to `./data` outside Docker (the image still uses `/data`), and its
+  files are readable by the owner only. History and queue databases flush to disk less often
+  (faster on SD cards; a power cut can lose the last few plays, never corrupt the file).
+- The public `/healthz` no longer shows the version (the private `/api/health` does).
+- Releases check the tag matches the package version and run the tests before publishing,
+  build without shared caches, and don't move `latest` for pre-releases. The daily yt-dlp
+  pull request now runs the CI checks.
+- The source package only contains what's needed to build and test.
 - The README quick start, setup guide and landing page no longer lead with Tailscale: they start
   from the plain `compose.yaml` and offer Caddy (cloud server), Cloudflare Tunnel, Tailscale
   Funnel or your own reverse proxy as equal choices. Example addresses use `music.example.com`.
+- Documented every setting (`ECHO_TUNES_DATA_DIR`, `ECHO_TUNES_HOST`, ranges), how to run
+  without Docker, and the current `doctor` output.
+- `CLAUDE.md` and task playbooks in `.claude/skills/` for working on the code with Claude Code.
 
 ## [0.2.1] - 2026-11-26
 
@@ -88,21 +133,6 @@ First release.
 
 ### Added
 
-- Optional YouTube Music sign-in with `echo-tunes login` (Google device sign-in with your own
-  OAuth client, or `--browser` with pasted headers) and `echo-tunes logout`. Tokens are stored
-  in the data folder with owner-only permissions; audio is still fetched without the account.
-- Voice commands for your library: play my liked songs, play my playlist …, play my supermix /
-  discover mix / replay mix, and like this song. Playlist names are matched loosely.
-- Optional `ECHO_TUNES_SEND_HISTORY` adds played songs to your YouTube history.
-- `doctor` reports the sign-in status and checks the library can be read.
-- `scripts/build_voice_model.py` generates every locale's voice model from one definition.
-
-### Fixed
-
-- `/alexa` now caps the body size while reading it, so a chunked request without
-  `Content-Length` can't be read without limit.
-- CI's secret scan works on pull requests from Dependabot.
-
 - Alexa skill endpoint (`POST /alexa`) with Amazon request verification: certificate URL rules,
   certificate chain and name, RSA-SHA256 body signature, 150-second timestamp window and skill
   ID check, with a bounded certificate cache and download timeout.
@@ -120,8 +150,23 @@ First release.
 - Documentation: setup guide, public HTTPS options, voice commands, architecture, troubleshooting.
 - CI: lint, type check, tests including a memory soak test, privacy check, secret scan,
   workflow audit, Docker smoke test; multi-arch release workflow; daily yt-dlp update PRs.
+- Optional YouTube Music sign-in with `echo-tunes login` (Google device sign-in with your own
+  OAuth client, or `--browser` with pasted headers) and `echo-tunes logout`. Tokens are stored
+  in the data folder with owner-only permissions; audio is still fetched without the account.
+- Voice commands for your library: play my liked songs, play my playlist …, play my supermix /
+  discover mix / replay mix, and like this song. Playlist names are matched loosely.
+- Optional `ECHO_TUNES_SEND_HISTORY` adds played songs to your YouTube history.
+- `doctor` reports the sign-in status and checks the library can be read.
+- `scripts/build_voice_model.py` generates every locale's voice model from one definition.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.1...HEAD
+### Fixed
+
+- `/alexa` now caps the body size while reading it, so a chunked request without
+  `Content-Length` can't be read without limit.
+- CI's secret scan works on pull requests from Dependabot.
+
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/denzilrdz/echo-tunes/releases/tag/v0.1.0

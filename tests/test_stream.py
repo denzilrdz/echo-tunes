@@ -72,12 +72,20 @@ def test_parse_range(header: str | None, start: int, end: int, partial: bool) ->
     assert (r.start, r.end, r.partial) == (start, end, partial)
 
 
-@pytest.mark.parametrize(
-    "header", ["bytes=1000-", "bytes=5-1", "items=0-1", "bytes=0-1,5-6", "bytes=x-"]
-)
-def test_parse_range_rejects(header: str) -> None:
-    with pytest.raises(StreamError):
+@pytest.mark.parametrize("header", ["bytes=1000-", "bytes=-0", "bytes=5000-6000"])
+def test_parse_range_unsatisfiable_is_416(header: str) -> None:
+    with pytest.raises(StreamError) as exc:
         parse_range(header, 1000)
+    assert exc.value.status == 416
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["bytes=5-1", "items=0-1", "bytes=0-1,5-6", "bytes=x-", "bytes=-", "bytes", "bytes=\u0661-"],
+)
+def test_parse_range_ignores_what_it_does_not_understand(header: str) -> None:
+    r = parse_range(header, 1000)  # RFC 9110: ignore the header, send the whole file
+    assert (r.start, r.end, r.partial) == (0, 999, False)
 
 
 async def test_full_and_partial_stream() -> None:
@@ -151,3 +159,86 @@ async def test_ignores_a_200_that_would_send_the_whole_file() -> None:
 
     relay = StreamRelay(OneSource(), httpx.AsyncClient(transport=httpx.MockTransport(whole_file)))
     assert await collect(relay, "bytes=100-199") == b""
+
+
+async def test_expired_link_mid_song_is_refreshed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Review finding: a 403 part-way through cut the song and kept the dead link cached."""
+    monkeypatch.setattr(stream_mod, "UPSTREAM_SPAN", 30_000)
+    inner = cdn()
+    expired = [False]
+
+    async def expiring(req: httpx.Request) -> httpx.Response:
+        if req.headers.get("range") == "bytes=30000-59999" and not expired[0]:
+            expired[0] = True
+            return httpx.Response(403)
+        return await inner._transport.handle_async_request(req)
+
+    source = OneSource()
+    relay = StreamRelay(source, httpx.AsyncClient(transport=httpx.MockTransport(expiring)))
+    src, rng = await relay.open("dQw4w9WgXcQ", None)
+    got = b"".join([c async for c in relay.body(src, rng, "dQw4w9WgXcQ")])
+    assert got == AUDIO and source.invalidated == 1
+
+
+def test_stream_slots_cap_per_link_and_in_total() -> None:
+    slots = stream_mod.StreamSlots(total=4, per_link=2)
+    assert slots.acquire("a") is None and slots.acquire("a") is None
+    assert slots.acquire("a") == "link"
+    assert slots.acquire("b") is None and slots.acquire("c") is None
+    assert slots.acquire("d") == "busy"
+    slots.release("a")
+    assert slots.acquire("d") is None
+    for key in ("a", "b", "c", "d"):
+        slots.release(key)
+    assert slots.count == 0 and not slots._open
+
+
+async def _response_run(body, send, length: int):  # type: ignore[no-untyped-def]
+    closed: list[bool] = []
+    resp = stream_mod.AudioResponse(body, length=length, on_close=lambda: closed.append(True))
+
+    async def receive() -> dict:  # type: ignore[type-arg]
+        await __import__("asyncio").sleep(3600)
+        return {"type": "http.disconnect"}
+
+    scope = {"type": "http", "asgi": {"spec_version": "2.4"}}
+    await resp(scope, receive, send)
+    return resp, closed
+
+
+async def test_a_client_that_stops_reading_is_dropped(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import asyncio
+
+    monkeypatch.setattr(stream_mod, "SEND_TIMEOUT", 0.05)
+    finished = [False]
+
+    async def body():  # type: ignore[no-untyped-def]
+        try:
+            for _ in range(100):
+                yield b"x" * 10
+        finally:
+            finished[0] = True  # the YouTube download is closed too
+
+    sent: list[dict] = []  # type: ignore[type-arg]
+
+    async def send(msg: dict) -> None:  # type: ignore[type-arg]
+        sent.append(msg)
+        if len(sent) > 2:
+            await asyncio.sleep(3600)  # the client's buffer is full and it never reads
+
+    resp, closed = await _response_run(body(), send, 1000)
+    assert resp.outcome == "client_stalled" and closed == [True] and finished[0]
+
+
+async def test_a_song_cut_short_is_not_finished_or_counted_ok() -> None:
+    async def body():  # type: ignore[no-untyped-def]
+        yield b"x" * 10
+
+    sent: list[dict] = []  # type: ignore[type-arg]
+
+    async def send(msg: dict) -> None:  # type: ignore[type-arg]
+        sent.append(msg)
+
+    resp, closed = await _response_run(body(), send, 1000)
+    assert resp.outcome == "cut_short" and closed == [True]
+    assert all(m.get("more_body", True) for m in sent[1:])  # never claims the body is complete

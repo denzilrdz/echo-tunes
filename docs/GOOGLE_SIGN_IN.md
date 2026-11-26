@@ -77,7 +77,7 @@ Then restart and check:
 ```bash
 docker compose restart echo-tunes
 docker compose exec echo-tunes echo-tunes doctor
-#   ✓ YouTube Music account: signed in (google); 200 liked songs readable
+#   ✓ YouTube Music account: Signed in: your library is readable (200 liked songs)
 ```
 
 > [!TIP]

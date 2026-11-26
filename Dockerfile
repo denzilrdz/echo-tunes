@@ -48,6 +48,6 @@ WORKDIR /data
 VOLUME ["/data"]
 EXPOSE 8080
 HEALTHCHECK --interval=60s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4).status != 200)"]
+  CMD ["python", "-c", "import os,sys,urllib.request; port=os.environ.get('ECHO_TUNES_PORT','8080'); sys.exit(urllib.request.urlopen(f'http://127.0.0.1:{port}/healthz', timeout=4).status != 200)"]
 ENTRYPOINT ["echo-tunes"]
 CMD ["serve"]

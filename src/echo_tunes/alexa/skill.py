@@ -214,7 +214,7 @@ class Skill:
         self, name: str, intent: dict[str, Any], state: PlayerState
     ) -> r.Response:
         """Play liked songs, a playlist or a mix from the signed-in account."""
-        wanted = _slot(intent, "playlist") or _slot(intent, "mix")
+        wanted = _slot(intent, "playlist") or _slot(intent, "mix", resolved=True)
         try:
             coll: Collection | None
             if name == "PlayLikedIntent":
@@ -269,10 +269,14 @@ class Skill:
                 else r.empty()
             )
         audio = (envelope.get("context") or {}).get("AudioPlayer") or {}
-        offset = state.offset_ms
-        if state.index_from_token(audio.get("token")) == state.index:
+        index, offset = state.index, state.offset_ms
+        if state.finished:
+            # The song already played to its end: go on to the next one, or start it over.
+            nxt = state.next_index()
+            index, offset = (nxt if nxt is not None else state.index), 0
+        elif state.index_from_token(audio.get("token")) == state.index:
             offset = int(audio.get("offsetInMilliseconds") or offset)
-        directive = self._play(state, state.index, offset_ms=offset)
+        directive = self._play(state, index, offset_ms=offset)
         return r.build(directives=[directive]) if speak else r.only(directive)
 
     async def _skip(self, state: PlayerState, *, forward: bool, speak: bool) -> r.Response:
@@ -291,8 +295,18 @@ class Skill:
         return r.only(directive)
 
     def _requeue_next(self, state: PlayerState) -> list[dict[str, Any]]:
-        # The upcoming song may already be queued on the Echo; drop it so the new order applies.
-        return [r.clear_enqueued()] if state.current else []
+        """Swap the song the Echo has queued next for the new next song.
+
+        The Echo usually asked for its next song (PlaybackNearlyFinished, sent once per song)
+        long before the user says "shuffle", so a bare ClearQueue would leave nothing to play
+        when the current song ends. REPLACE_ENQUEUED swaps it without touching the current one.
+        """
+        if not state.current:
+            return []
+        nxt = state.next_index()
+        if nxt is None:
+            return [r.clear_enqueued()]
+        return [self._play(state, nxt, behavior="REPLACE_ENQUEUED")]
 
     # --- playback events (no speech allowed) --------------------------------------------------
     async def _audio_event(
@@ -306,6 +320,7 @@ class Skill:
             case "PlaybackStarted":
                 if idx is not None and track is not None:
                     state.index, state.offset_ms, state.failures = idx, 0, 0
+                    state.finished = False
                     self._now(state, playing=True, position_ms=offset)
                     # A start part-way through the song is a resume, not a new play.
                     resumed = offset > 0 and bool(
@@ -327,6 +342,8 @@ class Skill:
             case "PlaybackFinished":
                 if idx is not None and track is not None:
                     self._now(state, playing=False, position_ms=offset)
+                    if idx == state.index:
+                        state.finished, state.offset_ms = True, 0
                     if self.history:
                         full = track.duration * 1000 if track.duration else None
                         self.history.ended(device, track.video_id, "finished", full or offset)
@@ -353,14 +370,28 @@ class Skill:
                 if self.history:
                     self.history.ended(device, track.video_id, "failed", offset)
                 self.resolver.invalidate(track.video_id)
-                state.index = idx
                 state.failures += 1
                 if state.failures >= MAX_FAILURES_IN_A_ROW:
                     log.warning("%d songs failed in a row; stopping", state.failures)
                     return r.empty()
-                nxt = state.next_index()
-                if nxt is not None:
-                    return r.only(self._play(state, nxt))
+                playing = request.get("currentPlaybackState") or {}
+                still_playing = (
+                    playing.get("playerActivity") == "PLAYING"
+                    and playing.get("token")
+                    and playing.get("token") != token
+                )
+                after = self._index_after(state, idx)
+                if after is None:
+                    await self._top_up(state)
+                    after = self._index_after(state, idx)
+                if after is None:
+                    return r.empty()
+                if still_playing:
+                    # The song queued *next* failed while another still plays: queue the one
+                    # after it instead, without cutting off what's playing.
+                    return r.only(self._play(state, after, behavior="REPLACE_ENQUEUED"))
+                state.index = idx
+                return r.only(self._play(state, after))
         return r.empty()
 
     async def _button(
@@ -417,6 +448,12 @@ class Skill:
         self._background.add(task)
         task.add_done_callback(self._background.discard)
 
+    @staticmethod
+    def _index_after(state: PlayerState, idx: int) -> int | None:
+        if idx + 1 < len(state.tracks):
+            return idx + 1
+        return 0 if state.loop and len(state.tracks) > 1 else None
+
     def _warm_next(self, state: PlayerState) -> None:
         nxt = state.next_index()
         if nxt is not None:
@@ -439,6 +476,19 @@ def _device_id(envelope: dict[str, Any]) -> str:
     return str((system.get("device") or {}).get("deviceId") or "unknown")
 
 
-def _slot(intent: dict[str, Any], name: str) -> str:
+def _slot(intent: dict[str, Any], name: str, *, resolved: bool = False) -> str:
+    """A slot's spoken words, or with ``resolved`` the value its synonym maps to.
+
+    E.g. "second mix" is a synonym of "mix 2" in the voice model; only the resolved value
+    matches the mix's real title.
+    """
     slot = (intent.get("slots") or {}).get(name) or {}
+    if resolved:
+        for auth in (slot.get("resolutions") or {}).get("resolutionsPerAuthority") or []:
+            if (auth.get("status") or {}).get("code") != "ER_SUCCESS_MATCH":
+                continue
+            for v in auth.get("values") or []:
+                value = ((v or {}).get("value") or {}).get("name")
+                if value:
+                    return str(value).strip()
     return str(slot.get("value") or "").strip()

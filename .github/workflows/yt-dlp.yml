@@ -66,6 +66,7 @@ jobs:
     permissions:
       contents: write # push the deps/yt-dlp branch
       pull-requests: write # open the pull request
+      actions: write # start CI on the branch (PRs opened with this token don't trigger it)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,3 +90,6 @@ jobs:
               --label yt-dlp --label dependencies \
               --body "Automated daily update (versions at least a day old). Tests passed in the workflow run. Merge, then tag a release to ship it."
           fi
+          # Run the required checks on the new commit (a workflow_dispatch from this token is
+          # allowed to start a run; a pull_request event from it is not).
+          gh workflow run ci.yml --ref deps/yt-dlp

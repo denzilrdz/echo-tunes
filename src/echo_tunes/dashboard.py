@@ -14,6 +14,7 @@ import asyncio
 import base64
 import hmac
 import ipaddress
+import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -69,10 +70,15 @@ def host_allowed(host_header: str, extra: frozenset[str]) -> bool:
     carry the attacker's name in Host; refusing unknown names blocks it.
     """
     host = host_header.strip().lower()
-    if host.startswith("["):  # [IPv6]:port
-        host = host[1 : host.find("]")] if "]" in host else host
+    if host.startswith("["):  # [IPv6] or [IPv6]:port, nothing else after the bracket
+        inside, bracket, rest = host[1:].partition("]")
+        if not bracket or (rest and not re.fullmatch(r":[0-9]{1,5}", rest)):
+            return False
+        host = inside
     elif host.count(":") == 1:
-        host = host.rsplit(":", 1)[0]
+        host, _, port = host.partition(":")
+        if not re.fullmatch(r"[0-9]{1,5}", port):
+            return False
     if not host:
         return False
     if host in ("localhost", "localhost.") or host.endswith(".localhost") or host in extra:
@@ -221,8 +227,9 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     async def stats(
         days: int | None = Query(None, ge=1, le=3650),
         device: str | None = Query(None, max_length=64),
+        tz: int | None = Query(None, ge=-840, le=840, description="minutes east of UTC"),
     ) -> dict[str, Any]:
-        return deps.history.stats(days, _full_id(deps.store, device))
+        return deps.history.stats(days, _full_id(deps.store, device), tz)
 
     @app.get("/api/devices")
     async def devices() -> list[dict[str, str]]:

@@ -88,6 +88,8 @@ def test_rejects_missing_headers() -> None:
         "https://user@s3.amazonaws.com/echo.api/cert.pem",
         "https://s3.amazonaws.com/echo.api/anything-else.pem",
         "https://s3.amazonaws.com/echo.api/echo-api-cert-1.pem.exe",
+        "https://s3.amazonaws.com/echo.api/echo-api-cert-\u0661.pem",  # Arabic-Indic digit
+        "https://s3.amazonaws.com/echo.api/echo-api-cert.pem%0A",
     ],
 )
 def test_cert_url_rules(url: str) -> None:
@@ -141,3 +143,30 @@ def test_failed_certificate_urls_are_not_fetched_again() -> None:
         with pytest.raises(RequestRejected):
             verifier.verify(amazon.headers(body), body)
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("make_request", "reason"),
+    [
+        (lambda a: ({}, body_for()), "missing_signature"),
+        (lambda a: ({**a.headers(body_for()), "Signature-256": "%%%"}, body_for()), "signature"),
+        (lambda a: (a.headers(b"x" * 300_000), b"x" * 300_000), "too_large"),
+        (lambda a: (a.headers(b"not json"), b"not json"), "signature"),
+        (lambda a: (a.headers(b := body_for(timestamp="nope")), b), "timestamp"),
+        (lambda a: (a.headers(b := body_for(timestamp=None)), b), "timestamp"),
+        (
+            lambda a: (
+                a.headers(body_for(), cert_url="https://evil.test/echo-api-cert.pem"),
+                body_for(),
+            ),
+            "certificate",
+        ),
+    ],
+)
+def test_every_rejection_has_its_metric_reason(make_request, reason: str) -> None:  # type: ignore[no-untyped-def]
+    """Review finding: the reason label was guessed from the message text and could be wrong."""
+    amazon = FakeAmazon()
+    headers, body = make_request(amazon)
+    with pytest.raises(RequestRejected) as exc:
+        make(amazon).verify(headers, body)
+    assert exc.value.reason == reason

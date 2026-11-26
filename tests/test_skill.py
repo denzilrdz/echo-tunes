@@ -118,12 +118,125 @@ async def test_whats_playing(skill: Skill) -> None:
     assert "Song 1 by Artist 1" in resp["response"]["outputSpeech"]["ssml"]
 
 
-async def test_shuffle_keeps_current_song_and_clears_enqueued(skill: Skill) -> None:
+async def test_shuffle_keeps_current_song_and_replaces_enqueued(skill: Skill) -> None:
     await start(skill)
     resp = await skill.handle(intent("AMAZON.ShuffleOnIntent"))
-    assert directives(resp)[0]["type"] == "AudioPlayer.ClearQueue"
+    [play] = directives(resp)
+    assert play["type"] == "AudioPlayer.Play" and play["playBehavior"] == "REPLACE_ENQUEUED"
+    assert "expectedPreviousToken" not in play["audioItem"]["stream"]
     state = skill.store.get(DEVICE)
     assert state.shuffle and state.tracks[0].video_id == "vid00000001"
+    assert play["audioItem"]["metadata"]["title"] == state.tracks[1].title
+
+
+async def test_mode_change_after_nearly_finished_keeps_music_going(skill: Skill) -> None:
+    """Review finding: the Echo sends PlaybackNearlyFinished once per song, usually *before* the
+    user says "shuffle"/"loop". The answer must queue a song, not just clear the queued one."""
+    for mode in ("AMAZON.ShuffleOnIntent", "AMAZON.LoopOnIntent", "AMAZON.LoopOffIntent"):
+        resp = await start(skill)
+        tok = directives(resp)[0]["audioItem"]["stream"]["token"]
+        await skill.handle(event("AudioPlayer.PlaybackStarted", tok))
+        nearly = await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", tok))
+        assert directives(nearly)[0]["playBehavior"] == "ENQUEUE"
+        resp = await skill.handle(intent(mode))
+        plays = [d for d in directives(resp) if d["type"] == "AudioPlayer.Play"]
+        assert plays and plays[0]["playBehavior"] == "REPLACE_ENQUEUED", mode
+
+
+async def test_loop_with_one_song_uses_a_new_token(skill: Skill) -> None:
+    skill.catalog.radio = _no_radio  # type: ignore[method-assign]
+    resp = await start(skill)
+    tok = directives(resp)[0]["audioItem"]["stream"]["token"]
+    await skill.handle(intent("AMAZON.LoopOnIntent"))
+    resp = await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", tok))
+    [play] = directives(resp)
+    assert play["audioItem"]["stream"]["token"] != tok
+    assert play["audioItem"]["stream"]["expectedPreviousToken"] == tok
+
+
+async def _no_radio(video_id: str, limit: int) -> list:  # type: ignore[type-arg]
+    return []
+
+
+async def test_shuffle_off_restores_the_order(skill: Skill) -> None:
+    await start(skill)
+    before = [t.video_id for t in skill.store.get(DEVICE).tracks]
+    await skill.handle(intent("AMAZON.ShuffleOnIntent"))
+    await skill.handle(intent("AMAZON.ShuffleOffIntent"))
+    assert [t.video_id for t in skill.store.get(DEVICE).tracks] == before
+
+
+async def test_failed_enqueued_song_does_not_cut_off_the_playing_one(skill: Skill) -> None:
+    resp = await start(skill)
+    tok = directives(resp)[0]["audioItem"]["stream"]["token"]
+    await skill.handle(event("AudioPlayer.PlaybackStarted", tok))
+    nearly = await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", tok))
+    queued = directives(nearly)[0]["audioItem"]["stream"]["token"]
+    resp = await skill.handle(
+        event(
+            "AudioPlayer.PlaybackFailed",
+            queued,
+            error={"type": "MEDIA_ERROR_UNKNOWN"},
+            currentPlaybackState={"token": tok, "playerActivity": "PLAYING"},
+        )
+    )
+    [play] = directives(resp)
+    assert play["playBehavior"] == "REPLACE_ENQUEUED"
+    assert play["audioItem"]["metadata"]["title"] != "Song 1"
+    assert skill.store.get(DEVICE).index == 0  # still on the playing song
+
+
+async def test_failed_last_song_tops_up_the_queue(skill: Skill) -> None:
+    resp = await start(skill)
+    state = skill.store.get(DEVICE)
+    last = len(state.tracks) - 1
+    token = state.token(last)
+    skill.store.put(DEVICE, state)
+    resp = await skill.handle(
+        event("AudioPlayer.PlaybackFailed", token, error={"type": "MEDIA_ERROR_UNKNOWN"})
+    )
+    assert directives(resp), "the radio should be extended and the next song played"
+
+
+async def test_resume_after_the_song_ended_plays_the_next(skill: Skill) -> None:
+    resp = await start(skill)
+    tok = directives(resp)[0]["audioItem"]["stream"]["token"]
+    await skill.handle(event("AudioPlayer.PlaybackStarted", tok))
+    await skill.handle(event("AudioPlayer.PlaybackFinished", tok, offsetInMilliseconds=200_000))
+    env = intent("AMAZON.ResumeIntent")
+    env["context"]["AudioPlayer"] = {"token": tok, "offsetInMilliseconds": 200_000}
+    [play] = directives(await skill.handle(env))
+    assert play["audioItem"]["stream"]["offsetInMilliseconds"] == 0
+    assert play["audioItem"]["metadata"]["title"] != "Song 1"
+
+
+async def test_mix_synonym_uses_the_resolved_value(skill: Skill) -> None:
+    skill.catalog.signed_in = True  # type: ignore[misc]
+    asked: list[str] = []
+    orig = skill.catalog.mix
+
+    async def mix(name: str):  # type: ignore[no-untyped-def]
+        asked.append(name)
+        return await orig(name)
+
+    skill.catalog.mix = mix  # type: ignore[method-assign]
+    env = intent("PlayMixIntent")
+    env["request"]["intent"]["slots"] = {
+        "mix": {
+            "name": "mix",
+            "value": "second mix",
+            "resolutions": {
+                "resolutionsPerAuthority": [
+                    {
+                        "status": {"code": "ER_SUCCESS_MATCH"},
+                        "values": [{"value": {"name": "mix 2"}}],
+                    }
+                ]
+            },
+        }
+    }
+    await skill.handle(env)
+    assert asked == ["mix 2"]
 
 
 async def test_speech_is_ssml_safe(skill: Skill) -> None:

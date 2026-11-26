@@ -30,6 +30,14 @@ def test_reads_comma_separated_skill_ids(monkeypatch: pytest.MonkeyPatch, tmp_pa
         {"PUBLIC_URL": "http://music.example.com"},
         {"SKILL_IDS": "not-a-skill"},
         {"SKILL_IDS": " , "},
+        {"PUBLIC_URL": "https://music.example.com/echo"},
+        {"PUBLIC_URL": "https://music.example.com/?x=1"},
+        {"LOG_LEVEL": "warn"},
+        {"LOG_LEVEL": "trace"},
+        {"DASHBOARD_HOSTS": "music-dash.lan:8081"},
+        {"DEVICE_NAMES": "abc=Living room, kitchen"},
+        {"YTDLP_COOKIES": "/nonexistent/cookies.txt"},
+        {"PORT": "0"},
     ],
 )
 def test_rejects_bad_settings(
@@ -52,3 +60,17 @@ def test_damaged_stream_key_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path
     (tmp_path / "stream.key").write_bytes(b"")
     with pytest.raises(ValueError, match="damaged"):
         _ = make(monkeypatch, tmp_path).stream_secret
+
+
+def test_log_level_is_case_insensitive(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    assert make(monkeypatch, tmp_path, LOG_LEVEL="DEBUG").log_level == "debug"
+
+
+def test_data_dir_defaults_to_a_local_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ECHO_TUNES_DATA_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    for k, v in {"PUBLIC_URL": "https://music.example.com", "SKILL_IDS": ID1}.items():
+        monkeypatch.setenv(f"ECHO_TUNES_{k}", v)
+    assert Settings().data_dir == Path("data")  # type: ignore[call-arg]

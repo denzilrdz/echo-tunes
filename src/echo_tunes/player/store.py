@@ -19,6 +19,9 @@ class StateStore:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self._db.execute("PRAGMA journal_mode=WAL")
+        # WAL + NORMAL: no disk flush per write (a power cut can lose the last few plays, but
+        # never corrupts the file). Every Alexa event writes, and SD cards are slow to flush.
+        self._db.execute("PRAGMA synchronous=NORMAL")
         self._db.execute(
             "CREATE TABLE IF NOT EXISTS players ("
             " device TEXT PRIMARY KEY, state TEXT NOT NULL, updated REAL NOT NULL)"

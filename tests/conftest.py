@@ -34,26 +34,35 @@ class FakeCatalog:
         self.history: deque[str] = deque(maxlen=100)
         self._next = 100
         self.signed_in = signed_in
+        self.failing: set[str] = set()  # method names that raise, like an unreachable YouTube
+
+    def _maybe_fail(self, name: str) -> None:
+        if name in self.failing:
+            raise ConnectionError(f"{name}: YouTube Music unreachable")
 
     def _need(self) -> None:
         if not self.signed_in:
             raise NotSignedIn
 
     async def liked_songs(self) -> Collection:
+        self._maybe_fail("liked_songs")
         self._need()
         return Collection("your liked songs", [song(i) for i in range(500, 520)])
 
     async def playlist(self, name: str) -> Collection | None:
+        self._maybe_fail("playlist")
         self._need()
         if "road" not in name:
             return None
         return Collection("Road Trip", [song(i) for i in range(600, 610)])
 
     async def mix(self, name: str) -> Collection | None:
+        self._maybe_fail("mix")
         self._need()
         return Collection("My Supermix", [song(i) for i in range(700, 750)])
 
     async def like(self, video_id: str) -> None:
+        self._maybe_fail("like")
         self._need()
         self.liked.append(video_id)
 
@@ -61,10 +70,12 @@ class FakeCatalog:
         self.history.append(video_id)
 
     async def search_song(self, query: str) -> Track | None:
+        self._maybe_fail("search_song")
         self.searches.append(query)
         return None if "nothing" in query else song(1)
 
     async def radio(self, video_id: str, limit: int) -> list[Track]:
+        self._maybe_fail("radio")
         self.radios.append(video_id)
         start = self._next
         self._next += limit
