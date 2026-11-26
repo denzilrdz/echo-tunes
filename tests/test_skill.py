@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from echo_tunes import tokens
 from echo_tunes.alexa.skill import Skill
 
@@ -126,3 +128,48 @@ async def test_speech_is_ssml_safe(skill: Skill) -> None:
     resp = await start(skill, "nothing <audio src='x'/> & more")
     ssml = resp["response"]["outputSpeech"]["ssml"]
     assert "<audio" not in ssml and "&" not in ssml.removeprefix("<speak>")
+
+
+# --- signed-in library -------------------------------------------------------------------------
+async def test_library_intents_ask_to_sign_in_first(skill: Skill) -> None:
+    for name in ("PlayLikedIntent", "PlayMixIntent", "LikeIntent"):
+        resp = await skill.handle(intent(name))
+        if name == "LikeIntent":
+            await start(skill)
+            resp = await skill.handle(intent(name))
+        assert "sign in" in resp["response"]["outputSpeech"]["ssml"]
+
+
+async def test_play_liked_songs_playlist_and_mix(skill: Skill) -> None:
+    skill.catalog.signed_in = True  # type: ignore[misc]
+    resp = await skill.handle(intent("PlayLikedIntent"))
+    assert "Playing your liked songs" in resp["response"]["outputSpeech"]["ssml"]
+    assert len(skill.store.get(DEVICE).tracks) == 20
+
+    resp = await skill.handle(_with_slot("PlayPlaylistIntent", "playlist", "road trip"))
+    assert "Playing Road Trip" in resp["response"]["outputSpeech"]["ssml"]
+    assert directives(resp)[0]["audioItem"]["metadata"]["title"] == "Song 600"
+
+    resp = await skill.handle(_with_slot("PlayPlaylistIntent", "playlist", "gym"))
+    assert "couldn't find a playlist called gym" in resp["response"]["outputSpeech"]["ssml"]
+
+    resp = await skill.handle(_with_slot("PlayMixIntent", "mix", "supermix"))
+    assert "My Supermix" in resp["response"]["outputSpeech"]["ssml"]
+
+
+async def test_like_current_song_and_history(skill: Skill) -> None:
+    skill.catalog.signed_in = True  # type: ignore[misc]
+    resp = await start(skill)
+    token = directives(resp)[0]["audioItem"]["stream"]["token"]
+    resp = await skill.handle(intent("LikeIntent"))
+    assert "Added Song 1 to your liked songs" in resp["response"]["outputSpeech"]["ssml"]
+    assert list(skill.catalog.liked) == ["vid00000001"]  # type: ignore[attr-defined]
+    await skill.handle(event("AudioPlayer.PlaybackStarted", token))
+    await asyncio.sleep(0)  # history is reported in the background
+    assert list(skill.catalog.history) == ["vid00000001"]  # type: ignore[attr-defined]
+
+
+def _with_slot(name: str, slot: str, value: str) -> dict:  # type: ignore[type-arg]
+    env = intent(name)
+    env["request"]["intent"]["slots"] = {slot: {"name": slot, "value": value}}
+    return env

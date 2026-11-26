@@ -5,10 +5,10 @@
         "en-US": {
           "name": "echo tunes",
           "summary": "Play music from YouTube Music on your Echo, from your own server.",
-          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist. Sign in on your server to play your liked songs, playlists and mixes.",
           "examplePhrases": [
             "Alexa, ask echo tunes to play Blinding Lights",
-            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes to play my liked songs",
             "Alexa, ask echo tunes what's playing"
           ],
           "keywords": [
@@ -20,10 +20,10 @@
         "en-GB": {
           "name": "echo tunes",
           "summary": "Play music from YouTube Music on your Echo, from your own server.",
-          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist. Sign in on your server to play your liked songs, playlists and mixes.",
           "examplePhrases": [
             "Alexa, ask echo tunes to play Blinding Lights",
-            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes to play my liked songs",
             "Alexa, ask echo tunes what's playing"
           ],
           "keywords": [
@@ -35,10 +35,10 @@
         "en-IN": {
           "name": "echo tunes",
           "summary": "Play music from YouTube Music on your Echo, from your own server.",
-          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist. Sign in on your server to play your liked songs, playlists and mixes.",
           "examplePhrases": [
             "Alexa, ask echo tunes to play Blinding Lights",
-            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes to play my liked songs",
             "Alexa, ask echo tunes what's playing"
           ],
           "keywords": [
@@ -50,10 +50,10 @@
         "en-CA": {
           "name": "echo tunes",
           "summary": "Play music from YouTube Music on your Echo, from your own server.",
-          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist. Sign in on your server to play your liked songs, playlists and mixes.",
           "examplePhrases": [
             "Alexa, ask echo tunes to play Blinding Lights",
-            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes to play my liked songs",
             "Alexa, ask echo tunes what's playing"
           ],
           "keywords": [
@@ -65,10 +65,10 @@
         "en-AU": {
           "name": "echo tunes",
           "summary": "Play music from YouTube Music on your Echo, from your own server.",
-          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist. Sign in on your server to play your liked songs, playlists and mixes.",
           "examplePhrases": [
             "Alexa, ask echo tunes to play Blinding Lights",
-            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes to play my liked songs",
             "Alexa, ask echo tunes what's playing"
           ],
           "keywords": [
