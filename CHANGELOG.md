@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Player → Echo:** *Next* now plays right after the song the Echo has already lined up;
+  before, it was put in front of that song and skipped when it started.
+- An old *Play* pick from the dashboard no longer takes over a later voice request ("play my
+  liked songs", next, previous, start over). Resuming after a pause plays a pick made while
+  paused, and a picked song that fails is skipped instead of retried.
+- Saying "shuffle" or "loop" early in a song no longer lines up two songs.
+- "Loop off" on the last song carries on with radio instead of stopping.
+- With shuffle on, the radio after a song you asked for is shuffled too.
+- Songs added from the dashboard while shuffle is on keep your original order for when you
+  turn shuffle off.
+- A queued song that fails no longer shows the Echo as stopped while it keeps playing.
+- *Add to queue* on a full queue says how many songs fit instead of claiming all were added.
+- Playlists and mixes answer within Alexa's time limit, with an apology when YouTube Music is
+  slow, instead of failing silently.
+
 ## [0.3.0] - 2026-11-26
 
 A web player, and the dashboard becomes an app you can install on your phone.

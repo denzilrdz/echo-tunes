@@ -33,8 +33,13 @@ echo-tunes is a custom skill with the AudioPlayer interface. Amazon reference:
   and trims keep it, and `index_from_token` falls back to finding the song by ID.
 - `finished` is set on PlaybackFinished of the current song: "resume" then plays the next song
   from 0 instead of the last second of the old one.
-- Shuffle keeps the original order in `unshuffled`; shuffle off restores it. A new queue with
-  shuffle on starts on a random song.
+- `enqueued`: the song the Echo has lined up (set by every ENQUEUE/REPLACE_ENQUEUED in
+  `Skill._play`, cleared on PlaybackStarted, REPLACE_ALL and `replace()`). Shuffle/loop send
+  REPLACE_ENQUEUED only when something is enqueued; otherwise NearlyFinished picks the right
+  song (sending one too would queue two).
+- Shuffle keeps the original order in `unshuffled` (also for a one-song start, so radio added
+  later is shuffled in); shuffle off restores it. Dashboard picks are added to `unshuffled`
+  too. A new queue with shuffle on starts on a random song.
 - `PlaybackFailed`: if `currentPlaybackState` shows another song still PLAYING, the failure
   was the queued song: `REPLACE_ENQUEUED` the one after it. Three failures in a row stop.
 
@@ -55,9 +60,12 @@ entity resolutions: read them with `_slot(intent, name, resolved=True)`.
 ## The web player and an Echo
 
 The dashboard can't push to an Echo. `Skill.dashboard_queue()` edits the queue
-(`PlayerState.insert`, songs placed after the current one or at the end) and, for *Play*, sets
-`state.pending`. The next `PlaybackNearlyFinished` enqueues it naturally; if the Echo had
-already lined up another song, the `PlaybackStarted` of that song is answered with a
-`REPLACE_ALL` of the pending one (`_pending_jump`). "Skip now" (experimental) cuts the playing
+(`PlayerState.insert`): *Next* goes after the song the Echo has already lined up (`enqueued`),
+else right after the current one; *Add to queue* at the end; *Play* right after the current
+one and sets `state.pending`. The next `PlaybackNearlyFinished` enqueues it naturally; if the
+Echo had already lined up another song, the `PlaybackStarted` of that song is answered with a
+`REPLACE_ALL` of the pending one (`_pending_jump`). Any REPLACE_ALL we send (a new queue, voice
+next/previous/start over/resume) clears `pending`, so an old pick never hijacks a newer
+command; resume plays a pick made while paused; a pick that fails is skipped, not retried. "Skip now" (experimental) cuts the playing
 song's open streams (`StreamSlots.cut`) and refuses new ones for 30 s, so the Echo reports
 `PlaybackFailed` and the reply plays the pending song.

@@ -30,7 +30,12 @@ class PlayerState:
     plays: int = 0  # bumped for every Play directive, so no two streams share a token
     unshuffled: list[str] = field(default_factory=list)  # queue order before shuffle (IDs)
     # A song chosen on the dashboard to play as soon as the Echo lets us (its next event).
+    # Cleared by anything newer: a new queue, or a voice/button command that plays a song.
     pending: str = ""
+    # The song the Echo has lined up after the current one (we answered PlaybackNearlyFinished
+    # with ENQUEUE, or sent REPLACE_ENQUEUED); "" when it has nothing queued. "Play next" goes
+    # after it, and a mode change only swaps it when there is one.
+    enqueued: str = ""
 
     def source_of(self, index: int) -> str:
         """Why this song is playing, for the history."""
@@ -80,11 +85,20 @@ class PlayerState:
         self.offset_ms = 0
         self.finished = False
         self.rev += 1
+        self.pending = ""  # a pick from the old queue must not hijack the new one
+        self.enqueued = ""  # the reply that plays this queue replaces the Echo's whole queue
         self.unshuffled = []
-        if self.shuffle and len(self.tracks) > 1:
-            # A new playlist starts on a random song too, not always its first.
+        if self.shuffle:
+            # Remember the order even for one song: radio added later is shuffled in.
             self.unshuffled = [t.video_id for t in self.tracks]
+            # A new playlist starts on a random song too, not always its first.
             random.shuffle(self.tracks)
+
+    def _upcoming_from(self) -> int:
+        """Where songs that haven't been lined up yet start: after the current song, or after
+        the one the Echo has already queued (it plays that next whatever we do)."""
+        j = self.position_of(self.enqueued) if self.enqueued else None
+        return j + 1 if j is not None and j > self.index else self.index + 1
 
     def extend(self, tracks: list[Track], max_len: int) -> int:
         """Append unseen tracks; drop played ones from the front if over max_len."""
@@ -94,8 +108,15 @@ class PlayerState:
             if t.video_id not in known:
                 known.add(t.video_id)
                 added.append(t)
-        self.tracks.extend(added)
-        if self.unshuffled:
+        if self.shuffle and added:
+            # Shuffle on: new songs (e.g. radio) are mixed into what's still to come.
+            start = self._upcoming_from()
+            rest = self.tracks[start:] + added
+            random.shuffle(rest)
+            self.tracks[start:] = rest
+        else:
+            self.tracks.extend(added)
+        if self.shuffle:
             self.unshuffled.extend(t.video_id for t in added)
         overflow = len(self.tracks) - max_len
         if overflow > 0:
@@ -109,28 +130,51 @@ class PlayerState:
             self.unshuffled = [v for v in self.unshuffled if v in kept]
         return len(added)
 
-    def insert(self, tracks: list[Track], *, at_end: bool, max_len: int) -> int:
+    def insert(
+        self, tracks: list[Track], *, at_end: bool, max_len: int, after_enqueued: bool = False
+    ) -> int:
         """Put songs right after the current one (or at the end), moving them if queued already.
 
+        With ``after_enqueued``, they go after the song the Echo has already lined up instead
+        (it plays that one next whatever we do, so a pick placed before it would be skipped).
         The current song stays where it is and tokens stay valid (they're matched by song).
-        Returns how many songs were placed.
+        Returns how many of the songs are in the queue afterwards.
         """
         cur = self.current
-        incoming = [t for t in dict((t.video_id, t) for t in tracks).values() if t != cur]
-        incoming = [t for t in incoming if not cur or t.video_id != cur.video_id]
+        keep = {cur.video_id} if cur else set()
+        anchor = self.index
+        if after_enqueued and cur:
+            anchor = self._upcoming_from() - 1
+            keep.add(self.tracks[anchor].video_id)
+        incoming = [t for t in dict((t.video_id, t) for t in tracks).values()]
+        incoming = [t for t in incoming if t.video_id not in keep]
         ids = {t.video_id for t in incoming}
-        before = [t for t in self.tracks[: self.index + 1] if t.video_id not in ids]
-        after = [t for t in self.tracks[self.index + 1 :] if t.video_id not in ids]
+        before = [t for t in self.tracks[: anchor + 1] if t.video_id not in ids]
+        after = [t for t in self.tracks[anchor + 1 :] if t.video_id not in ids]
         self.tracks = before + after + incoming if at_end else before + incoming + after
-        self.index = max(0, len(before) - 1) if cur else 0
+        if cur:
+            self.index = next(i for i, t in enumerate(self.tracks) if t.video_id == cur.video_id)
+        else:
+            self.index = 0
         overflow = len(self.tracks) - max_len
         if overflow > 0:
             drop = min(overflow, self.index)
             self.tracks = self.tracks[drop:][:max_len]
             self.index -= drop
-        if self.unshuffled:
-            self.unshuffled = [t.video_id for t in self.tracks]
-        return len(incoming)
+        kept = {t.video_id for t in self.tracks}
+        if self.shuffle:
+            # Keep the order to go back to when shuffle is turned off: the user's original
+            # order, with the picks after the current song (or at the end).
+            order = [v for v in self.unshuffled if v not in ids]
+            new = [t.video_id for t in incoming]
+            at = len(order)
+            if not at_end and cur and cur.video_id in order:
+                at = order.index(cur.video_id) + 1
+            order[at:at] = new
+            self.unshuffled = [v for v in order if v in kept]
+            saved = set(self.unshuffled)
+            self.unshuffled += [t.video_id for t in self.tracks if t.video_id not in saved]
+        return sum(1 for t in incoming if t.video_id in kept)
 
     def position_of(self, video_id: str) -> int | None:
         return next((i for i, t in enumerate(self.tracks) if t.video_id == video_id), None)
@@ -181,6 +225,7 @@ class PlayerState:
             "plays": self.plays,
             "unshuffled": self.unshuffled,
             "pending": self.pending,
+            "enqueued": self.enqueued,
         }
 
     @classmethod
@@ -202,4 +247,5 @@ class PlayerState:
             plays=int(d.get("plays", 0)),
             unshuffled=[str(v) for v in d.get("unshuffled", [])],
             pending=str(d.get("pending", "")),
+            enqueued=str(d.get("enqueued", "")),
         )

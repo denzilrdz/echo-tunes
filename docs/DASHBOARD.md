@@ -46,8 +46,8 @@ and your phone's lock screen control it. Songs played here appear in the history
 
 | Button | On an Echo |
 | --- | --- |
-| **▶ Play** | Plays after the current song. If the Echo had already lined up its next song, it switches as soon as that one starts. |
-| **Next** | Right after the current song. |
+| **▶ Play** | Plays after the current song. If the Echo had already lined up its next song, it switches as soon as that one starts. If the Echo is paused, saying "resume" plays it. A newer voice request wins over it. |
+| **Next** | After whatever the Echo plays next: right after the current song, or after the song the Echo has already lined up. |
 | **+** (Add to queue) | At the end of the queue. |
 | **Radio** | A radio of similar songs, after the current song. |
 

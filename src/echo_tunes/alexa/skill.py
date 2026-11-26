@@ -21,6 +21,8 @@ from echo_tunes.player.store import StateStore
 log = logging.getLogger(__name__)
 
 MAX_FAILURES_IN_A_ROW = 3
+# Alexa waits ~8 s for an answer; a playlist or mix takes up to two YouTube Music calls.
+COLLECTION_BUDGET = 7.0
 
 HELP = (
     "You can say: play, followed by a song or artist. Or: play radio for, followed by a song. "
@@ -145,12 +147,13 @@ class Skill:
                 on = name == "AMAZON.ShuffleOnIntent"
                 state.set_shuffle(on)
                 return r.build(
-                    f"Shuffle {'on' if on else 'off'}.", directives=self._requeue_next(state)
+                    f"Shuffle {'on' if on else 'off'}.", directives=await self._requeue_next(state)
                 )
             case "AMAZON.LoopOnIntent" | "AMAZON.LoopOffIntent":
                 state.loop = name == "AMAZON.LoopOnIntent"
                 return r.build(
-                    f"Loop {'on' if state.loop else 'off'}.", directives=self._requeue_next(state)
+                    f"Loop {'on' if state.loop else 'off'}.",
+                    directives=await self._requeue_next(state),
                 )
             case "AMAZON.HelpIntent":
                 return r.build(HELP, reprompt="What would you like to play?", end_session=False)
@@ -215,20 +218,27 @@ class Skill:
     ) -> r.Response:
         """Play liked songs, a playlist or a mix from the signed-in account."""
         wanted = _slot(intent, "playlist") or _slot(intent, "mix", resolved=True)
+        if name == "PlayPlaylistIntent" and not wanted:
+            return r.build(
+                "Which playlist?", reprompt="Say the playlist's name.", end_session=False
+            )
         try:
             coll: Collection | None
-            if name == "PlayLikedIntent":
-                coll = await self.catalog.liked_songs()
-            elif name == "PlayPlaylistIntent":
-                if not wanted:
-                    return r.build(
-                        "Which playlist?", reprompt="Say the playlist's name.", end_session=False
-                    )
-                coll = await self.catalog.playlist(wanted)
-            else:
-                coll = await self.catalog.mix(wanted or "supermix")
+            # One budget for the whole lookup (finding the playlist, then its songs): each
+            # call has its own timeout, but two slow ones would miss Alexa's ~8 s.
+            async with asyncio.timeout(COLLECTION_BUDGET):
+                if name == "PlayLikedIntent":
+                    coll = await self.catalog.liked_songs()
+                elif name == "PlayPlaylistIntent":
+                    coll = await self.catalog.playlist(wanted)
+                else:
+                    coll = await self.catalog.mix(wanted or "supermix")
         except NotSignedIn:
             return r.build(SIGN_IN_FIRST)
+        except TimeoutError:
+            log.warning("loading %s took too long", name)
+            METRICS.youtube_errors.inc()
+            return r.build("Sorry, YouTube Music is slow right now. Please try again.")
         except Exception:
             log.exception("loading %s failed", name)
             METRICS.youtube_errors.inc()
@@ -270,7 +280,11 @@ class Skill:
             )
         audio = (envelope.get("context") or {}).get("AudioPlayer") or {}
         index, offset = state.index, state.offset_ms
-        if state.finished:
+        picked = state.position_of(state.pending) if state.pending else None
+        if picked is not None:
+            # "Play now" was picked on the dashboard while paused: resuming plays it.
+            index, offset = picked, 0
+        elif state.finished:
             # The song already played to its end: go on to the next one, or start it over.
             nxt = state.next_index()
             index, offset = (nxt if nxt is not None else state.index), 0
@@ -294,17 +308,23 @@ class Skill:
             return r.build(directives=[directive])
         return r.only(directive)
 
-    def _requeue_next(self, state: PlayerState) -> list[dict[str, Any]]:
+    async def _requeue_next(self, state: PlayerState) -> list[dict[str, Any]]:
         """Swap the song the Echo has queued next for the new next song.
 
         The Echo usually asked for its next song (PlaybackNearlyFinished, sent once per song)
         long before the user says "shuffle", so a bare ClearQueue would leave nothing to play
         when the current song ends. REPLACE_ENQUEUED swaps it without touching the current one.
+        If nothing is queued yet, nothing is needed: PlaybackNearlyFinished will ask, and get
+        the right song (sending one now would queue a song twice).
         """
-        if not state.current:
+        if not state.current or not state.enqueued:
             return []
         nxt = state.next_index()
         if nxt is None:
+            await self._top_up(state)  # e.g. loop off on the last song: carry on with radio
+            nxt = state.next_index()
+        if nxt is None:
+            state.enqueued = ""
             return [r.clear_enqueued()]
         return [self._play(state, nxt, behavior="REPLACE_ENQUEUED")]
 
@@ -318,6 +338,7 @@ class Skill:
         track = state.tracks[idx] if idx is not None else None
         match event:
             case "PlaybackStarted":
+                state.enqueued = ""  # what the Echo had lined up is what's starting now
                 jump = self._pending_jump(state, track)
                 if jump is not None:
                     return r.only(jump)
@@ -369,20 +390,25 @@ class Skill:
                 METRICS.playback_failures.inc()
                 if idx is None or track is None:
                     return r.empty()
-                self._now(state, playing=False, position_ms=offset)
-                if self.history:
-                    self.history.ended(device, track.video_id, "failed", offset)
-                self.resolver.invalidate(track.video_id)
-                state.failures += 1
-                if state.failures >= MAX_FAILURES_IN_A_ROW:
-                    log.warning("%d songs failed in a row; stopping", state.failures)
-                    return r.empty()
                 playing = request.get("currentPlaybackState") or {}
-                still_playing = (
+                still_playing = bool(
                     playing.get("playerActivity") == "PLAYING"
                     and playing.get("token")
                     and playing.get("token") != token
                 )
+                if not still_playing:  # a queued song failing doesn't stop the playing one
+                    self._now(state, playing=False, position_ms=offset)
+                if self.history:
+                    self.history.ended(device, track.video_id, "failed", offset)
+                self.resolver.invalidate(track.video_id)
+                if state.pending == track.video_id:
+                    state.pending = ""  # a picked song that fails is skipped, not retried
+                if state.enqueued == track.video_id:
+                    state.enqueued = ""
+                state.failures += 1
+                if state.failures >= MAX_FAILURES_IN_A_ROW:
+                    log.warning("%d songs failed in a row; stopping", state.failures)
+                    return r.empty()
                 after = self._index_after(state, idx)
                 if after is None:
                     await self._top_up(state)
@@ -430,7 +456,15 @@ class Skill:
             state = self.store.get(device)
             if state.current is None:
                 raise LookupError("Start something on this Echo by voice first.")
-            placed = state.insert(tracks, at_end=mode == "queue", max_len=self.cfg.max_queue)
+            # "next" means right after whatever the Echo plays next: if it has already lined
+            # up a song, after that one (or the pick would be skipped when it starts). "now"
+            # goes right after the current song and jumps there at the Echo's next event.
+            placed = state.insert(
+                tracks,
+                at_end=mode == "queue",
+                max_len=self.cfg.max_queue,
+                after_enqueued=mode == "next",
+            )
             first = next(iter(t for t in tracks if state.position_of(t.video_id) is not None), None)
             if mode == "now" and first is not None and first != state.current:
                 state.pending = first.video_id
@@ -439,6 +473,9 @@ class Skill:
             self.store.put(device, state)
             self._warm_next(state)
         note = "Plays after the current song." if mode != "queue" else "Added to the end."
+        wanted = len({t.video_id for t in tracks})
+        if placed < wanted:
+            note += f" The queue is full: {placed} of {wanted} songs fit."
         return {"placed": placed, "note": note}
 
     async def dashboard_skip(self, device: str) -> str | None:
@@ -484,6 +521,12 @@ class Skill:
         track = state.tracks[index]
         if behavior == "REPLACE_ALL":
             state.index = index
+            # Anything played on purpose (voice, buttons, a new queue) beats an older pick,
+            # and REPLACE_ALL empties the Echo's own queue.
+            state.pending = ""
+            state.enqueued = ""
+        else:
+            state.enqueued = track.video_id
         self.resolver.warm(track.video_id)
         return r.play(
             track,
