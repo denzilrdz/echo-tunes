@@ -1,0 +1,115 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "name": "echo tunes",
+          "summary": "Play music from YouTube Music on your Echo, from your own server.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "examplePhrases": [
+            "Alexa, ask echo tunes to play Blinding Lights",
+            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes what's playing"
+          ],
+          "keywords": [
+            "music",
+            "youtube music",
+            "self-hosted"
+          ]
+        },
+        "en-GB": {
+          "name": "echo tunes",
+          "summary": "Play music from YouTube Music on your Echo, from your own server.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "examplePhrases": [
+            "Alexa, ask echo tunes to play Blinding Lights",
+            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes what's playing"
+          ],
+          "keywords": [
+            "music",
+            "youtube music",
+            "self-hosted"
+          ]
+        },
+        "en-IN": {
+          "name": "echo tunes",
+          "summary": "Play music from YouTube Music on your Echo, from your own server.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "examplePhrases": [
+            "Alexa, ask echo tunes to play Blinding Lights",
+            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes what's playing"
+          ],
+          "keywords": [
+            "music",
+            "youtube music",
+            "self-hosted"
+          ]
+        },
+        "en-CA": {
+          "name": "echo tunes",
+          "summary": "Play music from YouTube Music on your Echo, from your own server.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "examplePhrases": [
+            "Alexa, ask echo tunes to play Blinding Lights",
+            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes what's playing"
+          ],
+          "keywords": [
+            "music",
+            "youtube music",
+            "self-hosted"
+          ]
+        },
+        "en-AU": {
+          "name": "echo tunes",
+          "summary": "Play music from YouTube Music on your Echo, from your own server.",
+          "description": "A private, self-hosted skill. Say: Alexa, ask echo tunes to play, followed by a song or artist.",
+          "examplePhrases": [
+            "Alexa, ask echo tunes to play Blinding Lights",
+            "Alexa, ask echo tunes to play radio for Tum Hi Ho",
+            "Alexa, ask echo tunes what's playing"
+          ],
+          "keywords": [
+            "music",
+            "youtube music",
+            "self-hosted"
+          ]
+        }
+      },
+      "isAvailableWorldwide": true,
+      "testingInstructions": "Private self-hosted skill; not for certification.",
+      "category": "MUSIC_AND_AUDIO",
+      "distributionCountries": []
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "https://YOUR-PUBLIC-URL/alexa",
+          "sslCertificateType": "Trusted"
+        },
+        "interfaces": [
+          {
+            "type": "AUDIO_PLAYER"
+          }
+        ]
+      }
+    },
+    "manifestVersion": "1.0",
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": false,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false,
+      "locales": {
+        "en-US": {},
+        "en-GB": {},
+        "en-IN": {},
+        "en-CA": {},
+        "en-AU": {}
+      }
+    }
+  }
+}
