@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-26
+
+First release.
+
 ### Added
 
 - Optional YouTube Music sign-in with `echo-tunes login` (Google device sign-in with your own
@@ -40,3 +44,6 @@ All notable changes to this project are documented here. The format follows
 - Documentation: setup guide, public HTTPS options, voice commands, architecture, troubleshooting.
 - CI: lint, type check, tests including a memory soak test, privacy check, secret scan,
   workflow audit, Docker smoke test; multi-arch release workflow; daily yt-dlp update PRs.
+
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/denzilrdz/echo-tunes/releases/tag/v0.1.0
