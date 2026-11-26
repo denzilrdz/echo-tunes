@@ -9,9 +9,9 @@ from __future__ import annotations
 import secrets
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -49,6 +49,18 @@ class Settings(BaseSettings):
         default=False, description="Add played songs to your YouTube history (when signed in)."
     )
 
+    # Dashboard, history and metrics: a SECOND port that must never be exposed publicly
+    # (the public proxy/tunnel only forwards `port`). 0 turns the dashboard off.
+    dashboard_port: int = Field(default=8081, ge=0, le=65535)
+    dashboard_host: str = "0.0.0.0"  # noqa: S104 - inside a container; publish it privately
+    dashboard_password: SecretStr | None = Field(
+        default=None, description="Optional password for the dashboard and /metrics (user: admin)."
+    )
+    history_days: int = Field(default=15, ge=0, le=3650, description="0 = don't keep history.")
+    # Friendly Echo names: "<end of device ID>=Living room,<end>=Kitchen" (IDs are long; the
+    # dashboard shows the last 12 characters to copy from).
+    device_names: Annotated[dict[str, str], NoDecode] = Field(default_factory=dict)
+
     # Resource limits (keep memory flat no matter how long it runs)
     resolver_workers: int = Field(default=2, ge=1, le=8)
     resolver_tasks_per_worker: int = Field(default=25, ge=1, le=1000)
@@ -59,6 +71,21 @@ class Settings(BaseSettings):
     def _split_ids(cls, v: object) -> object:
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @field_validator("device_names", mode="before")
+    @classmethod
+    def _parse_names(cls, v: object) -> object:
+        if isinstance(v, str):
+            pairs = [p.split("=", 1) for p in v.split(",") if "=" in p]
+            return {k.strip(): n.strip() for k, n in pairs if k.strip() and n.strip()}
+        return v
+
+    @field_validator("dashboard_port")
+    @classmethod
+    def _different_port(cls, v: int, info: Any) -> int:
+        if v and v == info.data.get("port"):
+            raise ValueError("dashboard_port must differ from port (the public one)")
         return v
 
     @field_validator("skill_ids")
