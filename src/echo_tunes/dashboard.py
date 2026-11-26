@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import hmac
 import html
 import ipaddress
@@ -26,12 +27,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic import Field as PydField
 
 from echo_tunes import __version__
+from echo_tunes.cache import BoundedTTLCache
 from echo_tunes.health import memory_mb
 from echo_tunes.history import History
 from echo_tunes.metrics import CONTENT_TYPE, METRICS
@@ -66,6 +68,7 @@ class DashboardDeps:
     signed_in: Callable[[], bool]
     device_names: dict[str, str] = field(default_factory=dict)
     password: str | None = None
+    session_days: int = 180  # 0 = until signed out
     public_origin: str = ""
     allowed_hosts: frozenset[str] = frozenset()  # beyond IPs, localhost and the public name
     # Setup page: run the checks, and give the browser a test stream link.
@@ -178,6 +181,16 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         if deps.password
         else None
     )
+    failures: BoundedTTLCache[str, int] = BoundedTTLCache(256, ttl=LOGIN_WINDOW)
+
+    def signed_in(request: Request) -> bool:
+        if not deps.password:
+            return True
+        basic = request.headers.get("authorization", "")
+        if expected and hmac.compare_digest(basic.encode(), expected.encode()):
+            return True  # scripts and monitors (Uptime Kuma, curl -u admin:...)
+        cookie = request.cookies.get(SESSION_COOKIE, "")
+        return session_valid(deps.password, cookie, time.time())
 
     @app.middleware("http")
     async def guard(
@@ -195,12 +208,15 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             refused = _write_refused(request)
             if refused:
                 return JSONResponse({"detail": refused[1]}, status_code=refused[0])
-        if expected and not hmac.compare_digest(
-            request.headers.get("authorization", "").encode(), expected.encode()
-        ):
-            return Response(
-                status_code=401, headers={"WWW-Authenticate": 'Basic realm="echo-tunes"'}
-            )
+        path = request.url.path
+        if not signed_in(request) and not _public(path):
+            if request.method == "GET" and path == "/":
+                return RedirectResponse("/login", status_code=303)
+            # Browsers get the login page instead of the Basic-auth pop-up; plain clients
+            # (curl, monitors) are told to use Basic auth.
+            browser = "sec-fetch-mode" in request.headers
+            hdrs = {} if browser else {"WWW-Authenticate": 'Basic realm="echo-tunes"'}
+            return JSONResponse({"detail": "sign in"}, status_code=401, headers=hdrs)
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = policy
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -226,9 +242,63 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     )
     sw_js = (web / "sw.js").read_text(encoding="utf-8")
 
+    login_html = (
+        (web / "login.html")
+        .read_text(encoding="utf-8")
+        .replace("<title>echo-tunes</title>", f"<title>Sign in · {name}</title>")
+        .replace("<span>echo-tunes</span>", f"<span>{name}</span>")
+    )
+
     @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
-        return index_html
+    async def index(request: Request) -> Response:
+        resp = HTMLResponse(index_html)
+        if deps.password and deps.session_days == 0 and request.cookies.get(SESSION_COOKIE):
+            set_session(resp, request)  # keep a never-expiring session's cookie fresh
+        return resp
+
+    @app.get("/login", response_class=HTMLResponse)
+    async def login_page(request: Request) -> Response:
+        if not deps.password or signed_in(request):
+            return RedirectResponse("/", status_code=303)
+        return HTMLResponse(login_html)
+
+    @app.post("/api/login")
+    async def login(body: _LoginIn, request: Request) -> Response:
+        if not deps.password:
+            raise HTTPException(404, "no password is set")
+        who = request.client.host if request.client else "?"
+        if (failures.get(who) or 0) >= LOGIN_ATTEMPTS:
+            raise HTTPException(429, "Too many attempts; wait 10 minutes.")
+        if not hmac.compare_digest(body.password.encode(), deps.password.encode()):
+            failures.set(who, (failures.get(who) or 0) + 1)
+            await asyncio.sleep(1)  # slow down guessing
+            raise HTTPException(401, "Wrong password.")
+        failures.pop(who)
+        resp = JSONResponse({"status": "ok"})
+        set_session(resp, request)
+        return resp
+
+    def set_session(resp: Response, request: Request) -> None:
+        assert deps.password
+        days = deps.session_days
+        expires = int(time.time()) + days * 86400 if days else 0  # 0 = never
+        resp.set_cookie(
+            SESSION_COOKIE,
+            session_value(deps.password, expires),
+            # Browsers keep a cookie at most ~400 days; with no expiry it's renewed on every
+            # visit (see index()), so it never runs out while you use it.
+            max_age=(days or COOKIE_MAX_DAYS) * 86400,
+            httponly=True,
+            samesite="lax",
+            secure=_https(request),
+            path="/",
+        )
+
+    @app.post("/api/logout")
+    async def logout() -> Response:
+        resp = JSONResponse({"status": "ok"})
+        resp.delete_cookie(SESSION_COOKIE, path="/")
+        return resp
 
     @app.get("/manifest.webmanifest")
     async def manifest() -> JSONResponse:
@@ -541,6 +611,45 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
     async def clear_history(request: Request) -> dict[str, int]:
         action(request)
         return {"removed": deps.history.clear()}
+
+
+# --- signing in -----------------------------------------------------------------------------
+SESSION_COOKIE = "echo_tunes_session"
+COOKIE_MAX_DAYS = 400  # the longest browsers keep a cookie
+LOGIN_ATTEMPTS = 10  # wrong passwords per client address...
+LOGIN_WINDOW = 600  # ...per 10 minutes
+
+
+class _LoginIn(BaseModel):
+    password: str = PydField(min_length=1, max_length=200)
+
+
+def session_value(password: str, expires: int) -> str:
+    """``<expiry>.<HMAC of it, keyed by the password>`` (expiry 0 = never): no server-side
+    session store, and changing the password signs every device out."""
+    sig = hmac.new(password.encode(), f"session:{expires}".encode(), hashlib.sha256).hexdigest()
+    return f"{expires}.{sig}"
+
+
+def session_valid(password: str, value: str, now: float) -> bool:
+    expires = value.partition(".")[0]
+    if not expires.isascii() or not expires.isdigit() or len(expires) > 12:
+        return False
+    if expires != "0" and int(expires) < now:
+        return False
+    return hmac.compare_digest(value.encode(), session_value(password, int(expires)).encode())
+
+
+def _public(path: str) -> bool:
+    """What the login page and an app install need before signing in (no data in any of it)."""
+    return path in ("/login", "/api/login", "/manifest.webmanifest", "/sw.js") or (
+        path.startswith("/static/")
+    )
+
+
+def _https(request: Request) -> bool:
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return proto.split(",")[0].strip().lower() == "https"
 
 
 def _write_refused(request: Request) -> tuple[int, str] | None:

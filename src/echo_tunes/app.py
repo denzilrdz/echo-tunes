@@ -103,6 +103,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             signed_in=lambda: catalog.signed_in,
             device_names=settings.device_names,
             password=password or None,
+            session_days=settings.dashboard_session_days,
             public_origin=settings.base_url,
             allowed_hosts=frozenset(
                 [*settings.dashboard_hosts, (settings.public_url.host or "").lower()]

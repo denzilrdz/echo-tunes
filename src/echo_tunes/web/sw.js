@@ -2,8 +2,8 @@
 // (page, styles, scripts, icons) available when the network blips. Always network first, so
 // an update shows up on the next load; the API, audio and YouTube images are never cached.
 "use strict";
-const CACHE = "echo-tunes-shell-v1";
-const SHELL = ["/", "/static/app.css", "/static/app.js", "/static/player.js", "/static/icon.svg", "/manifest.webmanifest"];
+const CACHE = "echo-tunes-shell-v2";
+const SHELL = ["/static/app.css", "/static/app.js", "/static/player.js", "/static/login.js", "/static/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -26,7 +26,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(req)
       .then((resp) => {
-        if (resp.ok) {
+        if (resp.ok && !resp.redirected) {
           const copy = resp.clone();
           caches.open(CACHE).then((c) => c.put(req.mode === "navigate" ? "/" : req, copy));
         }
