@@ -3,12 +3,13 @@
 # examples/ (Tailscale Funnel, Cloudflare Tunnel, or Caddy on a server with a public IP).
 services:
   echo-tunes:
-    image: ghcr.io/denzilrdz/echo-tunes:0.1.0
+    image: ghcr.io/denzilrdz/echo-tunes:0.2.0
     container_name: echo-tunes
     restart: unless-stopped
     env_file: .env
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8080:8080" # public side: put your HTTPS proxy/tunnel in front of this one
+      - "127.0.0.1:8081:8081" # private dashboard + /metrics: keep it off the internet
     volumes:
       - ./data:/data
     # Hardening: read-only system files, no extra privileges, capped memory.

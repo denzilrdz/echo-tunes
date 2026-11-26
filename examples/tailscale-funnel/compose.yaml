@@ -1,6 +1,8 @@
 # Home server already on Tailscale: Funnel gives echo-tunes a public HTTPS address
 # (https://<name>.<your-tailnet>.ts.net) without opening any port on your router.
 # Setup: docs/PUBLIC_HTTPS.md#tailscale-funnel
+# The private dashboard is on https://echo-tunes.<your-tailnet>.ts.net:8443, tailnet only:
+# serve.json publishes 8443 with Serve (no AllowFunnel), so the internet can't reach it.
 services:
   tailscale:
     image: tailscale/tailscale:v1.104.7
@@ -17,7 +19,7 @@ services:
       - ./serve.json:/config/serve.json:ro
 
   echo-tunes:
-    image: ghcr.io/denzilrdz/echo-tunes:0.1.0
+    image: ghcr.io/denzilrdz/echo-tunes:0.2.0
     container_name: echo-tunes
     restart: unless-stopped
     network_mode: service:tailscale # shares the Tailscale container's network

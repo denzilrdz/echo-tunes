@@ -15,10 +15,12 @@ services:
     depends_on: [echo-tunes]
 
   echo-tunes:
-    image: ghcr.io/denzilrdz/echo-tunes:0.1.0
+    image: ghcr.io/denzilrdz/echo-tunes:0.2.0
     container_name: echo-tunes
     restart: unless-stopped
     env_file: .env
+    ports:
+      - "127.0.0.1:8081:8081" # private dashboard (open via SSH: ssh -L 8081:localhost:8081 …)
     volumes:
       - ./data:/data
     read_only: true
