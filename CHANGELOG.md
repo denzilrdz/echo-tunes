@@ -65,6 +65,11 @@ All notable changes to this project are documented here. The format follows
   past the end says how big the file is (`Content-Range: bytes */<size>`).
 - Several songs looked up at once (e.g. a playlist with `ECHO_TUNES_RESOLVER_WORKERS=1`) no
   longer "time out" while merely waiting their turn, which also restarted the workers.
+- The source package (sdist) now has everything its tests need (8 failed from it).
+- Docs: `.env.example` lists every setting; the dashboard docs list every API endpoint and no
+  longer mention the old password pop-up; the setup guide shows current `doctor` output.
+- The compose files rotate container logs (3 × 10 MB) and explain how to pin the image by
+  digest.
 - Dashboard: history and stats no longer hold up the Echo's requests while they run on a big
   history, and a huge `offset` gives a clear error instead of a server error.
 

@@ -50,6 +50,18 @@ def test_cli_explains_a_bad_location(
     assert "ECHO_TUNES_LOCATION" in capsys.readouterr().out
 
 
+def test_every_setting_is_documented() -> None:
+    """Audit: .env.example was missing seven settings."""
+    root = Path(__file__).parent.parent
+    for doc in ("README.md", ".env.example"):
+        path = root / doc
+        if not path.exists():  # e.g. an sdist without .env.example
+            continue
+        text = path.read_text()
+        missing = [n for n in Settings.model_fields if f"ECHO_TUNES_{n.upper()}" not in text]
+        assert not missing, f"{doc} lacks {missing}"
+
+
 def test_reads_comma_separated_skill_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     s = make(monkeypatch, tmp_path, SKILL_IDS=f"{ID1}, {ID2}")
     assert s.skill_ids == [ID1, ID2]

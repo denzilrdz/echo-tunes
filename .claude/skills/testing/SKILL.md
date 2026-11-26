@@ -23,6 +23,11 @@ All tests are offline: no YouTube, no Amazon.
 
 - A bug fix's test must fail without the fix. For playback, send events in the Echo's real
   order: the review that found the shuffle bug showed a test can pass with an impossible order.
+- Close what you open: unclosed SQLite connections or files fail the run (`filterwarnings`
+  turns ResourceWarning into an error). The `skill` fixture closes its store and any
+  `skill.history` a test sets; elsewhere call `.close()`. Find a leak's origin with
+  `PYTHONTRACEMALLOC=15 uv run pytest -q`.
+- The sdist must pass its own tests: `only-include` in pyproject.toml lists what they need.
 - `await skill.wait_background()` after a play intent: the radio is fetched after answering.
 - Don't leave global state changed (root logger level, env vars): the memory soak test runs in
   the same process and counts every captured log record.

@@ -9,7 +9,8 @@ description: Cut an echo-tunes release (version bump, changelog, signed tag, Git
    - `version` in `pyproject.toml`, then `uv lock` (the lock records it).
    - `CHANGELOG.md`: rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD`, add an empty
      `[Unreleased]`, update the compare links at the bottom.
-   - Image tag in `compose.yaml` and `examples/*/compose.yaml`.
+   - Image tag in `compose.yaml` and `examples/*/compose.yaml` (the `image:` line and the
+     digest-pinning comment above it).
    - Open a PR, wait for CI, squash-merge.
 2. **Tag** on the updated `main`: `git tag -s vX.Y.Z -m "echo-tunes X.Y.Z"`, check with
    `git verify-tag`, then `git push origin vX.Y.Z` (ask first). To try a release on a real
