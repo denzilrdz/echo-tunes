@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# Local config and data: never commit
+.env
+data/
+cookies.txt
+*.cookies
+*.key
+oauth.json
+browser.json
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

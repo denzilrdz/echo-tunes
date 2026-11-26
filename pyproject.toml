@@ -1,0 +1,80 @@
+[project]
+name = "echo-tunes"
+version = "0.1.0.dev0"
+description = "Self-hosted Alexa skill that plays YouTube Music on your Echo. One Docker container, no AWS, no Amazon password."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Denzil Rodrigues" }]
+requires-python = ">=3.13"
+keywords = ["alexa", "alexa-skill", "echo", "self-hosted", "yt-dlp", "ytmusicapi"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Web Environment",
+  "Framework :: FastAPI",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = [
+  "certifi>=2025.10",
+  "cryptography>=46",
+  "fastapi>=0.165",
+  "httpx>=0.28",
+  "pydantic-settings>=2.6",
+  "uvicorn[standard]>=0.54",
+  "yt-dlp[default]>=2026.11.23",
+  "ytmusicapi>=1.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/denzilrdz/echo-tunes"
+Issues = "https://github.com/denzilrdz/echo-tunes/issues"
+Changelog = "https://github.com/denzilrdz/echo-tunes/blob/main/CHANGELOG.md"
+
+[project.scripts]
+echo-tunes = "echo_tunes.cli:main"
+
+[dependency-groups]
+dev = [
+  "actionlint-py>=1.7.12.25",
+  "mypy>=1.18",
+  "pytest>=8.4",
+  "pytest-asyncio>=1.2",
+  "ruff>=0.14",
+  "zizmor>=1.31.1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/echo_tunes"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "ASYNC", "PTH"]
+ignore = ["S101"] # asserts are fine in tests
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S108"]
+
+[tool.mypy]
+strict = true
+python_version = "3.13"
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["yt_dlp.*", "ytmusicapi.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
