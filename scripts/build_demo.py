@@ -8,6 +8,7 @@ page's API calls with sample data, so the demo always matches the real thing.
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -72,8 +73,15 @@ def build(out: Path) -> None:
     shutil.copy(ROOT / "demo" / "landing.html", out / "index.html")
     img = out / "img"
     img.mkdir()
-    for name in ("social-preview.png", "dashboard-light.png", "dashboard-dark.png"):
-        shutil.copy(ROOT / "docs" / "img" / name, img / name)
+    # Every image the landing page refers to (and the social preview), so a new screenshot
+    # can't go missing from the site: a reference to a file that doesn't exist fails the build.
+    landing = (ROOT / "demo" / "landing.html").read_text()
+    wanted = {"social-preview.png", *re.findall(r"img/([\w.-]+\.png)", landing)}
+    for name in sorted(wanted):
+        src = ROOT / "docs" / "img" / name
+        if not src.is_file():
+            raise SystemExit(f"demo build: landing page refers to img/{name}, not in docs/img")
+        shutil.copy(src, img / name)
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {SITE}sitemap.xml\n")
     (out / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
