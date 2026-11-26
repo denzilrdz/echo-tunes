@@ -18,6 +18,18 @@ class PlayerState:
     rev: int = 0  # bumped whenever the queue is replaced, so stale Alexa tokens are ignored
     offset_ms: int = 0  # where playback stopped, for "resume"
     failures: int = 0  # songs that failed to play in a row
+    # For the dashboard and history: where the queue came from and what the Echo is doing.
+    source: str = ""  # e.g. 'Asked for "mercedes by clayjars"', 'Playlist: Road Trip'
+    source_kind: str = ""  # ask | radio | library
+    playing: bool = False
+    position_ms: int = 0  # playback position at `since`
+    since: float = 0.0  # wall-clock time of the last start/stop event
+
+    def source_of(self, index: int) -> str:
+        """Why this song is playing, for the history."""
+        if self.source_kind in ("ask", "radio") and index > 0 and self.tracks:
+            return f"Radio after {self.tracks[0].title}"
+        return self.source
 
     # --- tokens -------------------------------------------------------------------------
     # Alexa hands this back in every playback event, so it identifies queue + position.
@@ -98,6 +110,11 @@ class PlayerState:
             "rev": self.rev,
             "offset_ms": self.offset_ms,
             "failures": self.failures,
+            "source": self.source,
+            "source_kind": self.source_kind,
+            "playing": self.playing,
+            "position_ms": self.position_ms,
+            "since": self.since,
         }
 
     @classmethod
@@ -110,4 +127,9 @@ class PlayerState:
             rev=int(d.get("rev", 0)),
             offset_ms=int(d.get("offset_ms", 0)),
             failures=int(d.get("failures", 0)),
+            source=str(d.get("source", "")),
+            source_kind=str(d.get("source_kind", "")),
+            playing=bool(d.get("playing", False)),
+            position_ms=int(d.get("position_ms", 0)),
+            since=float(d.get("since", 0.0)),
         )

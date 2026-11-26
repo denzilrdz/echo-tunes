@@ -6,19 +6,12 @@ import argparse
 import asyncio
 import logging
 import os
-import shutil
-import subprocess
 import sys
-import time
 
-import httpx
 from pydantic import ValidationError
 
 from echo_tunes import __version__
 from echo_tunes.config import Settings
-
-CLOUD_HINT = " (on a cloud server YouTube may block the IP: see docs/TROUBLESHOOTING.md)"
-TEST_SONG = "dQw4w9WgXcQ"  # a long-lived, globally available video used only for the self-test
 
 
 def _settings() -> Settings:
@@ -35,7 +28,8 @@ def _settings() -> Settings:
 def serve() -> None:
     import uvicorn
 
-    from echo_tunes.app import create_app
+    from echo_tunes.app import build_services, create_app
+    from echo_tunes.dashboard import create_dashboard
 
     settings = _settings()
     logging.basicConfig(
@@ -47,123 +41,104 @@ def serve() -> None:
     if settings.log_level.lower() != "debug":
         for noisy in ("httpx", "httpcore"):
             logging.getLogger(noisy).setLevel(logging.WARNING)
-    uvicorn.run(
-        create_app(settings),
-        host=settings.host,
-        port=settings.port,
-        log_level=settings.log_level,
-        proxy_headers=True,
-        timeout_graceful_shutdown=5,
-        server_header=False,
-    )
+
+    async def run() -> None:
+        services, closers = build_services(settings)
+        servers = [
+            uvicorn.Server(
+                uvicorn.Config(
+                    create_app(settings, services),
+                    host=settings.host,
+                    port=settings.port,
+                    proxy_headers=True,
+                    log_level=settings.log_level,
+                    timeout_graceful_shutdown=5,
+                    server_header=False,
+                )
+            )
+        ]
+        if settings.dashboard_port and services.dashboard:
+            dash = create_dashboard(services.dashboard)
+            servers.append(
+                uvicorn.Server(
+                    uvicorn.Config(
+                        dash,
+                        host=settings.dashboard_host,
+                        port=settings.dashboard_port,
+                        access_log=False,
+                        log_level=settings.log_level,
+                        timeout_graceful_shutdown=5,
+                        server_header=False,
+                    )
+                )
+            )
+            log = logging.getLogger(__name__)
+            log.info(
+                "dashboard on %s:%d%s (keep this port private)",
+                settings.dashboard_host,
+                settings.dashboard_port,
+                " with a password" if services.dashboard.password else "",
+            )
+            loopback = settings.dashboard_host in ("127.0.0.1", "::1", "localhost")
+            if not loopback and not services.dashboard.password:
+                log.warning(
+                    "the dashboard has no password and listens on %s: publish port %d only "
+                    "to localhost, your LAN or a VPN, or set ECHO_TUNES_DASHBOARD_PASSWORD",
+                    settings.dashboard_host,
+                    settings.dashboard_port,
+                )
+        tasks = [asyncio.create_task(s.serve()) for s in servers]
+        try:
+            # When one server stops (Ctrl-C / SIGTERM is delivered to it), stop the other too.
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for s in servers:
+                s.should_exit = True
+            await asyncio.gather(*tasks, return_exceptions=True)
+            for item in closers:
+                close = getattr(item, "aclose", None) or getattr(item, "close", None)
+                if close is not None:
+                    result = close()
+                    if asyncio.iscoroutine(result):
+                        await result
+
+    asyncio.run(run())
 
 
 def doctor() -> None:
-    """Run every check and print a ✓/✗ list; exit 1 if anything failed."""
-    failures = 0
-
-    def report(ok: bool, label: str, detail: str = "") -> None:
-        nonlocal failures
-        failures += not ok
-        print(f"  {'✓' if ok else '✗'} {label}" + (f": {detail}" if detail else ""))
+    """Run every check and print a list; exit 1 if anything failed."""
+    from echo_tunes.checks import run_checks
+    from echo_tunes.music import account, extract
+    from echo_tunes.music.catalog import YTMusicCatalog
 
     print(f"echo-tunes {__version__} doctor\n")
     settings = _settings()
-    report(
-        True,
-        "Configuration",
-        f"public URL {settings.base_url}, {len(settings.skill_ids)} skill ID(s)",
+    client = account.load_client(
+        settings.data_dir, settings.google_client_id, settings.google_client_secret
+    )
+    catalog = YTMusicCatalog(
+        *account.make_client(settings.data_dir, settings.language, settings.location, client)
     )
 
-    try:
-        settings.data_dir.mkdir(parents=True, exist_ok=True)
-        probe = settings.data_dir / ".write-test"
-        probe.write_text("ok")
-        probe.unlink()
-        report(True, "Data folder is writable", str(settings.data_dir))
-    except OSError as exc:
-        report(False, "Data folder is writable", str(exc))
-
-    deno = shutil.which("deno")
-    if deno:
-        out = subprocess.run([deno, "--version"], capture_output=True, text=True, check=False)  # noqa: S603
-        report(True, "Deno (needed by yt-dlp for YouTube)", out.stdout.split("\n")[0])
-    else:
-        report(False, "Deno (needed by yt-dlp for YouTube)", "not found on PATH")
-
-    from echo_tunes.music import extract
-
-    report(True, "yt-dlp", extract.version())
-
-    async def music_checks() -> None:
-        from echo_tunes.music import account
-        from echo_tunes.music.catalog import YTMusicCatalog
-
-        method = account.signed_in_method(settings.data_dir)
-        oauth_client = account.load_client(
-            settings.data_dir, settings.google_client_id, settings.google_client_secret
+    async def resolve(video_id: str) -> tuple[str, dict[str, str]]:
+        raw = await asyncio.to_thread(
+            extract.resolve, video_id, str(settings.ytdlp_cookies or ""), None
         )
-        try:
-            catalog = YTMusicCatalog(
-                *account.make_client(
-                    settings.data_dir, settings.language, settings.location, oauth_client
-                )
-            )
-            track = await catalog.search_song("never gonna give you up")
-            report(
-                track is not None, "YouTube Music search", track.spoken if track else "no results"
-            )
-            if method is None:
-                print("  - YouTube Music account: not signed in (optional, see echo-tunes login)")
-            elif method == "google" and oauth_client is None:
-                report(False, "YouTube Music account", "signed in, but the OAuth client is missing")
-            else:
-                liked = await catalog.liked_songs()
-                report(
-                    True,
-                    "YouTube Music account",
-                    f"signed in ({method}); {len(liked.tracks)} liked songs readable",
-                )
-        except Exception as exc:
-            report(False, "YouTube Music", f"{type(exc).__name__}: {exc}")
+        return raw["url"], raw["headers"]
 
-        try:
-            t0 = time.monotonic()
-            src = await asyncio.to_thread(
-                extract.resolve, TEST_SONG, str(settings.ytdlp_cookies or ""), None
-            )
-            async with httpx.AsyncClient(timeout=15) as client:
-                for _ in range(30):
-                    resp = await client.get(
-                        src["url"], headers={**src["headers"], "Range": "bytes=0-1023"}
-                    )
-                    if resp.status_code != 403:
-                        break
-                    await asyncio.sleep(0.3)
-            ok = resp.status_code in (200, 206)
-            report(
-                ok,
-                "Audio download from YouTube",
-                f"{resp.status_code} after {time.monotonic() - t0:.1f}s"
-                + ("" if ok else CLOUD_HINT),
-            )
-        except Exception as exc:
-            report(False, "Audio download from YouTube", str(exc).splitlines()[0])
-
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(f"{settings.base_url}/healthz")
-            report(
-                resp.status_code == 200,
-                "Public URL reaches this server",
-                f"{settings.base_url}/healthz answered {resp.status_code}",
-            )
-        except Exception as exc:
-            report(False, "Public URL reaches this server", f"{type(exc).__name__}: {exc}")
-
-    asyncio.run(music_checks())
-    print("\nAll good." if not failures else f"\n{failures} check(s) failed.")
-    sys.exit(1 if failures else 0)
+    checks = asyncio.run(
+        run_checks(
+            settings, search=catalog.search_song, resolve=resolve, signed_in=catalog.signed_in
+        )
+    )
+    marks = {"ok": "\u2713", "warn": "!", "fail": "\u2717", "info": "-"}
+    for c in checks:
+        print(f"  {marks[c.status]} {c.name}: {c.detail}")
+        if c.hint and c.status != "ok":
+            print(f"      {c.hint}")
+    failed = sum(c.status == "fail" for c in checks)
+    print("\nAll good." if not failed else f"\n{failed} check(s) failed.")
+    sys.exit(1 if failed else 0)
 
 
 def login(use_browser: bool) -> None:

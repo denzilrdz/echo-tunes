@@ -31,6 +31,10 @@ flowchart LR
 | [`stream.py`](../src/echo_tunes/stream.py) | Relays audio to the Echo, honouring `Range` requests. |
 | [`player/`](../src/echo_tunes/player) | Each Echo's queue, position, shuffle and loop, stored in SQLite. |
 | [`tokens.py`](../src/echo_tunes/tokens.py) | Signed, expiring stream links. |
+| [`history.py`](../src/echo_tunes/history.py) | Play history in SQLite, pruned after `ECHO_TUNES_HISTORY_DAYS`. |
+| [`dashboard.py`](../src/echo_tunes/dashboard.py), [`web/`](../src/echo_tunes/web) | The private dashboard and its read-only JSON API, on a second port. |
+| [`metrics.py`](../src/echo_tunes/metrics.py) | Prometheus metrics with fixed label values. |
+| [`checks.py`](../src/echo_tunes/checks.py) | Setup checks shared by `echo-tunes doctor` and the dashboard. |
 
 ## A song, step by step
 
@@ -80,6 +84,8 @@ echo-tunes is built so nothing does:
 | Audio links, search results, certificates | Fixed-size LRU caches with expiry ([`cache.py`](../src/echo_tunes/cache.py)) |
 | Songs being streamed | Passed through in 64 KB chunks; YouTube is asked for at most 8 MB per request; nothing is buffered |
 | Player queues | On disk in SQLite, max 200 songs per Echo, max 50 Echos (oldest forgotten) |
+| Play history | On disk in SQLite, deleted after `ECHO_TUNES_HISTORY_DAYS` (default 15) |
+| Metrics | Fixed label values only (no song titles or device IDs), so a constant number of series |
 | Per-Echo locks | Weak references: a lock disappears when nobody's waiting on it |
 | Background "prepare next song" tasks | Removed from their set when done; duplicates skipped |
 | yt-dlp / Deno | Separate processes, recycled every N songs |
@@ -96,5 +102,9 @@ the example compose files as a safety net.
   old and 256 KB in size; anything else gets `400`.
 - `/stream/…` links are HMAC-signed with a key generated on first start (`/data/stream.key`)
   and expire, so the server can't be used as an open proxy to YouTube.
-- There are no other endpoints besides `/` and `/healthz` (no admin UI, no API docs).
+- The public port has no other endpoints besides `/` and `/healthz` (no admin UI, no API docs).
+- The dashboard, its JSON API and `/metrics` live on a **separate port** (8081) that the public
+  tunnel or proxy never forwards. It's read-only, sends strict security headers (a
+  content security policy allowing only its own scripts), builds every piece of text with
+  `textContent` (song titles can't inject markup), and can require a password.
 - The container runs as a non-root user on a read-only filesystem with all capabilities dropped.

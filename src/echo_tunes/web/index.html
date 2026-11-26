@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>echo-tunes</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="/static/icon.svg" alt="" width="28" height="28">
+      <span>echo-tunes</span>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" data-tab="now" aria-selected="true">Now playing</button>
+      <button role="tab" data-tab="history" aria-selected="false">History</button>
+      <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
+      <button role="tab" data-tab="monitor" aria-selected="false">Monitoring</button>
+      <button role="tab" data-tab="setup" aria-selected="false">Setup</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="tab-now" role="tabpanel" aria-label="Now playing">
+      <div id="devices" class="devices"></div>
+    </section>
+
+    <section id="tab-history" role="tabpanel" aria-label="History" hidden>
+      <form class="toolbar" id="history-filters" autocomplete="off">
+        <label>Echo <select name="device"><option value="">All Echos</option></select></label>
+        <label>Period <select name="days"></select></label>
+        <label class="grow">Search <input name="q" type="search" placeholder="Song or artist" maxlength="100"></label>
+      </form>
+      <div class="table-wrap">
+        <table class="history">
+          <thead><tr><th>When</th><th>Song</th><th>Echo</th><th>Why</th><th>Listened</th><th></th></tr></thead>
+          <tbody id="history-rows"></tbody>
+        </table>
+      </div>
+      <p class="muted center" id="history-empty" hidden></p>
+      <div class="center"><button class="ghost" id="history-more" hidden>Show more</button></div>
+    </section>
+
+    <section id="tab-stats" role="tabpanel" aria-label="Stats" hidden>
+      <form class="toolbar" id="stats-filters">
+        <label>Echo <select name="device"><option value="">All Echos</option></select></label>
+        <label>Period <select name="days"></select></label>
+      </form>
+      <div class="tiles" id="stat-tiles"></div>
+      <div class="card">
+        <h2>Plays per day</h2>
+        <div id="per-day" class="chart"></div>
+      </div>
+      <div class="two">
+        <div class="card"><h2>Top songs</h2><ol id="top-songs" class="ranked"></ol></div>
+        <div class="card"><h2>Top artists</h2><ol id="top-artists" class="ranked"></ol></div>
+      </div>
+    </section>
+
+    <section id="tab-monitor" role="tabpanel" aria-label="Monitoring" hidden>
+      <div class="tiles" id="health-tiles"></div>
+      <div class="card">
+        <h2>Add echo-tunes to your own monitoring</h2>
+        <p class="muted">Everything here is on this private dashboard address. See
+          <a href="https://github.com/denzilrdz/echo-tunes/blob/main/docs/MONITORING.md" rel="noreferrer">docs/MONITORING.md</a>.</p>
+        <dl class="recipes" id="recipes"></dl>
+      </div>
+    </section>
+    <section id="tab-setup" role="tabpanel" aria-label="Setup" hidden>
+      <div class="two">
+        <div class="card">
+          <div class="row-between">
+            <h2>Setup checklist</h2>
+            <button class="ghost" id="setup-rerun" type="button">Run checks again</button>
+          </div>
+          <p class="muted" id="setup-summary">Running checks…</p>
+          <ul class="checks" id="setup-checks"></ul>
+        </div>
+        <div class="card">
+          <h2>Test play</h2>
+          <p class="muted">Plays a song in this browser through YouTube, this server and your public
+            address, the same way an Echo does. If you hear it, everything but the Alexa skill works.</p>
+          <button class="primary" id="test-play" type="button">▶ Play a test song</button>
+          <p class="muted" id="test-status" aria-live="polite"></p>
+          <audio id="test-audio" controls preload="none" hidden></audio>
+          <h3>Then on your Echo</h3>
+          <ol class="steps">
+            <li>Alexa developer console → your skill → <b>Test</b> → set testing to <b>Development</b>.</li>
+            <li>Say <b>“Alexa, ask my tunes to play Tum Hi Ho”</b>.</li>
+            <li>It appears under <b>Now playing</b> here within a few seconds.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="muted">echo-tunes <span id="version"></span> · read-only · history kept <span id="keep"></span></footer>
+
+  <template id="device-card">
+    <article class="device card">
+      <div class="np">
+        <img class="art" alt="" width="320" height="180" loading="lazy">
+        <div class="np-info">
+          <div class="np-top"><span class="who"></span><span class="state"></span></div>
+          <h2 class="title"></h2>
+          <p class="artist"></p>
+          <p class="source chip"></p>
+          <div class="progress" role="progressbar" aria-label="Song position"><div class="bar"></div></div>
+          <div class="times"><span class="pos"></span><span class="modes"></span><span class="dur"></span></div>
+        </div>
+      </div>
+      <h3 class="next-h">Up next</h3>
+      <ol class="queue"></ol>
+    </article>
+  </template>
+</body>
+</html>

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from echo_tunes.metrics import METRICS
 from echo_tunes.music.resolver import AudioResolver, AudioSource
 
 log = logging.getLogger(__name__)
@@ -102,6 +103,7 @@ class StreamRelay:
                         if chunk:
                             yield chunk
                             pos += len(chunk)
+                            METRICS.stream_bytes.inc(len(chunk))
             except httpx.TransportError as exc:
                 # A network blip: carry on from the exact byte we reached.
                 retries += 1

@@ -46,6 +46,14 @@ class StateStore:
                 (self._max_devices,),
             )
 
+    def all(self) -> list[tuple[str, PlayerState, float]]:
+        """Every known Echo (at most MAX_DEVICES), most recently active first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT device, state, updated FROM players ORDER BY updated DESC"
+            ).fetchall()
+        return [(d, PlayerState.from_dict(json.loads(s)), u) for d, s, u in rows]
+
     def count(self) -> int:
         with self._lock:
             return int(self._db.execute("SELECT COUNT(*) FROM players").fetchone()[0])
