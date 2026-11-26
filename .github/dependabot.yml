@@ -1,0 +1,41 @@
+# Keeps SHA-pinned GitHub Actions, the uv-locked Python packages and the Docker base images up
+# to date. The cooldown waits before proposing a brand-new release, so a compromised version is
+# usually caught and yanked first (security updates are not delayed). yt-dlp has its own daily
+# workflow (.github/workflows/yt-dlp.yml) because YouTube fixes can't wait a month.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    commit-message:
+      prefix: chore
+    ignore:
+      - dependency-name: yt-dlp
+      - dependency-name: yt-dlp-ejs
+      - dependency-name: ytmusicapi
+    groups:
+      python:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore

@@ -1,0 +1,61 @@
+name: yt-dlp
+
+# YouTube changes often and yt-dlp follows within days. Every day, if a newer yt-dlp, its
+# JavaScript challenge solver or ytmusicapi is out, run the tests against it and open (or
+# refresh) a pull request that updates uv.lock. Merging and tagging a release ships it.
+# (Pull requests opened with the built-in token don't trigger CI, so the tests run here.)
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: yt-dlp
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: update yt-dlp
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # push the deps/yt-dlp branch
+      pull-requests: write # open the pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Update the lock file
+        id: lock
+        run: |
+          uv lock --upgrade-package yt-dlp --upgrade-package yt-dlp-ejs --upgrade-package ytmusicapi
+          if git diff --quiet uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "ytdlp=$(uv tree --frozen --package yt-dlp --depth 0 | awk '/^yt-dlp/{print $2; exit}')" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test with the new versions
+        if: steps.lock.outputs.changed == 'true'
+        run: |
+          uv sync --frozen
+          uv run pytest -q
+      - name: Open or refresh the pull request
+        if: steps.lock.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.lock.outputs.ytdlp }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C deps/yt-dlp
+          git commit -am "chore(deps): update yt-dlp to ${VERSION}"
+          gh auth setup-git
+          git push --force origin deps/yt-dlp
+          if ! gh pr view deps/yt-dlp --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            gh pr create --head deps/yt-dlp --title "chore(deps): update yt-dlp to ${VERSION}" \
+              --body "Automated daily update. Tests passed in the workflow run. Merge, then tag a release to ship it."
+          fi

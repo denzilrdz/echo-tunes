@@ -1,0 +1,81 @@
+name: ci
+
+# Every push to main and every pull request: workflow lint, privacy check, format, lint,
+# type check, tests (including the memory soak test), and a Docker build with a smoke test.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # gitleaks scans the history
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+      - name: No private details (IPs, tailnet names, real IDs)
+        run: scripts/check-private-info.sh
+      - name: No secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: uv sync --frozen
+      - name: Lint workflows (zizmor + actionlint)
+        env:
+          GH_TOKEN: ${{ github.token }} # read-only: lets zizmor check advisories and impostor commits
+        run: |
+          uv run zizmor --persona=auditor .github/
+          uv run actionlint
+      - name: Format and lint
+        run: |
+          uv run ruff format --check src tests
+          uv run ruff check src tests
+      - name: Type check
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest -q
+
+  docker:
+    name: docker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: echo-tunes:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test (starts, healthy, refuses unsigned requests)
+        run: |
+          docker run -d --name et --read-only --tmpfs /tmp --cap-drop ALL -p 8080:8080 \
+            -e ECHO_TUNES_PUBLIC_URL=https://music.example.com \
+            -e ECHO_TUNES_SKILL_IDS=amzn1.ask.skill.ci echo-tunes:ci
+          for _ in $(seq 30); do curl -fsS localhost:8080/healthz && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' localhost:8080/alexa)" = 400
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/stream/x.m4a)" = 404
+          docker exec et deno --version
+          docker logs et

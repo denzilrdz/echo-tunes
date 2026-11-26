@@ -1,0 +1,48 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security problems, please don't open an issue: see SECURITY.md.
+        Many problems are explained in [Troubleshooting](https://github.com/denzilrdz/echo-tunes/blob/main/docs/TROUBLESHOOTING.md).
+  - type: input
+    id: version
+    attributes:
+      label: echo-tunes version
+      description: The image tag, or the version shown by `echo-tunes --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: hosting
+    attributes:
+      label: How is it reachable from the internet?
+      options: [Tailscale Funnel, Cloudflare Tunnel, Caddy on a public server, Own reverse proxy, Other]
+    validations:
+      required: true
+  - type: input
+    id: echo
+    attributes:
+      label: Echo model and language
+      placeholder: "Echo Dot (5th gen), English (India)"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: What did you say to Alexa, and what did she answer or do?
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `echo-tunes doctor`
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`docker compose logs --since 10m echo-tunes`. Remove your public address and skill ID if you prefer."
+      render: text

@@ -1,0 +1,7 @@
+# Changes to CI/CD, release and security-relevant files need the maintainer's review
+# (enforced when branch protection requires code-owner reviews).
+* @denzilrdz
+/.github/ @denzilrdz
+/Dockerfile @denzilrdz
+/src/echo_tunes/alexa/verify.py @denzilrdz
+/src/echo_tunes/tokens.py @denzilrdz
