@@ -1,6 +1,8 @@
 # Dashboard
 
-A private web page that shows what your Echos are doing:
+A private web page that shows what your Echos are doing.
+**[Try the demo](https://denzilrdz.github.io/echo-tunes/)** (sample data, nothing plays).
+
 
 | Tab | What you see |
 | --- | --- |
