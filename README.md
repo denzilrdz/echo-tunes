@@ -30,6 +30,13 @@ A private Alexa skill you host yourself: one Docker container, no AWS account, n
 > Your Echo plays the song, then keeps going with a radio of similar songs. Next, previous,
 > pause, resume, shuffle and loop all work by voice, and from the buttons in the Alexa app.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/dashboard-dark.png" />
+  <img src="docs/img/dashboard-light.png" alt="The echo-tunes dashboard: what each Echo is playing, why, and the songs coming up next" width="100%" />
+</picture>
+
+<sub>The private dashboard ([live demo](https://denzilrdz.github.io/echo-tunes/demo/), sample data).</sub>
+
 ## Highlights
 
 | Feature                | What you get                                                                                                      |

@@ -9,6 +9,7 @@ on:
       - src/echo_tunes/web/**
       - demo/**
       - scripts/build_demo.py
+      - docs/img/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 

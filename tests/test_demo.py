@@ -20,3 +20,11 @@ def test_demo_builds(tmp_path: Path) -> None:
     assert "/static/" not in html and "demo-banner" in html
     for name in ("app.js", "app.css", "icon.svg", "demo.js"):
         assert (tmp_path / "site" / "demo" / name).exists(), name
+    site = tmp_path / "site"
+    landing = (site / "index.html").read_text()
+    for tag in ('property="og:image"', 'name="description"', 'rel="canonical"'):
+        assert tag in landing, f"landing page lacks {tag}"
+        assert tag in html, f"demo page lacks {tag}"
+    assert "application/ld+json" in landing
+    for name in ("robots.txt", "sitemap.xml", "404.html", "img/social-preview.png"):
+        assert (site / name).exists(), name

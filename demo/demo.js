@@ -17,8 +17,33 @@
     ["CevxZvSJLk8", "Roar", "Katy Perry", 269],
     ["OPf0YbXqDm0", "Uptown Funk", "Mark Ronson, Bruno Mars", 270],
   ].map(([video_id, title, artist, duration]) => ({ video_id, title, artist, duration }));
+  // Screenshot mode (demo/?shots): made-up songs and generated artwork, so the README and
+  // social images never contain anyone's real album art or names.
+  if (new URLSearchParams(location.search).has("shots")) {
+    const MADE_UP = [
+      ["Neon Harbour", "The Paper Lanterns", 214], ["Monsoon Letters", "Aarav & The Tide", 247],
+      ["Slow Satellites", "Juniper Vale", 231], ["Paper Kites", "Mira Okafor", 198],
+      ["Goa After Rain", "Konkan Coast Collective", 262], ["Static Bloom", "Night Ferry", 225],
+      ["Lighthouse Radio", "Ines Marlow", 241], ["Copper Skies", "The Late Arrivals", 209],
+      ["Second Window", "Rafa Quinn", 256], ["Velvet Highway", "Saltwater Static", 233],
+      ["Tidal Clock", "Noor & Ellis", 219], ["Northbound", "Harbour Lights", 244],
+      ["Small Hours", "Odette Rain", 237],
+    ];
+    MADE_UP.forEach(([title, artist, duration], i) => Object.assign(SONGS[i], { title, artist, duration }));
+    const HUES = [12, 200, 265, 150, 32, 320, 185, 45, 230, 345, 95, 280, 170];
+    const art = new Map(SONGS.map((s, i) => [s.video_id, HUES[i]]));
+    window.ECHO_TUNES_THUMB = (id) => {
+      const h = art.get(id) ?? 210;
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(${h},70%,55%)'/><stop offset='1' stop-color='hsl(${(h + 60) % 360},65%,30%)'/></linearGradient></defs><rect width='160' height='90' fill='url(#g)'/><circle cx='122' cy='28' r='18' fill='hsla(0,0%,100%,.18)'/><circle cx='40' cy='70' r='30' fill='hsla(0,0%,0%,.12)'/></svg>`;
+      return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    };
+    document.documentElement.classList.add("shots");
+  }
   const DEVICES = [{ id: "DEMO0LIVING1", name: "Living room" }, { id: "DEMO0KITCHEN", name: "Kitchen" }];
-  const SOURCES = ['Asked for "blinding lights"', "Radio after Blinding Lights", "Playlist: Road Trip", "Liked songs"];
+  const SHOTS = new URLSearchParams(location.search).has("shots");
+  const SOURCES = SHOTS
+    ? ['Asked for "neon harbour"', "Radio after Neon Harbour", "Playlist: Road Trip", "Liked songs"]
+    : ['Asked for "blinding lights"', "Radio after Blinding Lights", "Playlist: Road Trip", "Liked songs"];
   const HISTORY_DAYS = 15;
   const loaded = Date.now() / 1000;
 
@@ -44,7 +69,7 @@
       time: t,
       devices: [
         { id: "DEMO0LIVING1", name: "Living room", playing: true, position_ms: Math.round((61 + playingFor) * 1000), updated: t - 5,
-          source: "Radio after Blinding Lights", shuffle: false, loop: false, queue_length: 26, queue_position: 3,
+          source: SHOTS ? "Radio after Neon Harbour" : "Radio after Blinding Lights", shuffle: false, loop: false, queue_length: 26, queue_position: 3,
           current: SONGS[5], up_next: SONGS.slice(6, 12) },
         { id: "DEMO0KITCHEN", name: "Kitchen", playing: false, position_ms: 94000, updated: t - 3600,
           source: "Playlist: Road Trip", shuffle: true, loop: false, queue_length: 12, queue_position: 4,

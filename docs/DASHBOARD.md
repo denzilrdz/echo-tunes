@@ -12,6 +12,21 @@ A private web page that shows what your Echos are doing.
 | **Monitoring** | Health at a glance, plus copy-ready settings for Uptime Kuma, Prometheus and Home Assistant ([MONITORING.md](MONITORING.md)). |
 | **Setup** | The same checklist as `echo-tunes doctor` (configuration, YouTube, your public address, "has Alexa reached this server?"), and a **Test play** button that plays a song in your browser through YouTube, this server and your public address, exactly like an Echo. |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/history-dark.png" />
+  <img src="img/history-light.png" alt="History tab: every song played, when, on which Echo, why, and how long it was listened to" width="100%" />
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/stats-dark.png" />
+  <img src="img/stats-light.png" alt="Stats tab: plays, listening time, plays per day, top songs and top artists" width="100%" />
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/setup-dark.png" />
+  <img src="img/setup-light.png" alt="Setup tab: the setup checklist and the Test play button" width="100%" />
+</picture>
+
 The dashboard is **read-only**: nothing on it can change what plays.
 
 It only answers to IP addresses, `localhost`, your public URL's name and names listed in

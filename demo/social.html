@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- The 1280x640 social preview (GitHub "Social preview", og:image). Rendered by
+     scripts/screenshots.py from the dark demo in screenshot mode; not published itself. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>echo-tunes social preview</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #e6edf3;
+    background:
+      radial-gradient(900px 500px at 85% 20%, rgba(68, 147, 248, .28), transparent 60%),
+      radial-gradient(700px 500px at 0% 100%, rgba(210, 153, 34, .14), transparent 60%),
+      #0d1117;
+    display: grid; grid-template-columns: 560px 1fr; align-items: center; padding: 0 0 0 72px;
+  }
+  .brand { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 700; }
+  .brand img { width: 56px; height: 56px; }
+  h1 { font-size: 50px; line-height: 1.08; margin: 34px 0 22px; letter-spacing: -.02em; }
+  h1 span { color: #4493f8; }
+  p { font-size: 22px; line-height: 1.45; color: #a7b1bc; margin: 0 0 30px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; max-width: 470px; }
+  .chip { font-size: 17px; padding: 7px 14px; border-radius: 999px; background: #15233a; color: #79b8ff; }
+  .url { margin-top: 34px; font-size: 18px; color: #8d96a0; font-family: ui-monospace, Menlo, monospace; }
+  .shot {
+    width: 640px; height: 360px; border-radius: 18px; overflow: hidden; margin-left: 20px;
+    border: 1px solid #2a313b; box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+    transform: perspective(1400px) rotateY(-9deg); transform-origin: left center;
+  }
+  .shot iframe { width: 1280px; height: 720px; border: 0; transform: scale(.5); transform-origin: 0 0; }
+</style>
+</head>
+<body>
+  <div>
+    <div class="brand"><img src="demo/icon.svg" alt=""> echo-tunes</div>
+    <h1>YouTube Music on your <span>Echo</span>, from your own server.</h1>
+    <p>A private, open-source Alexa skill: one Docker container, no AWS, no Amazon password.</p>
+    <div class="chips">
+      <span class="chip">“Alexa, ask my tunes to play …”</span>
+      <span class="chip">Endless radio</span>
+      <span class="chip">Your playlists</span>
+      <span class="chip">Dashboard</span>
+      <span class="chip">Self-hosted</span>
+    </div>
+    <div class="url">github.com/denzilrdz/echo-tunes</div>
+  </div>
+  <div class="shot"><iframe src="demo/?shots#now" title="dashboard"></iframe></div>
+</body>
+</html>

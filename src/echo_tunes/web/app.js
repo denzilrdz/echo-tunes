@@ -21,7 +21,8 @@ const api = async (path) => {
   if (!r.ok && r.status !== 503) throw new Error(`${path}: ${r.status}`);
   return r.json();
 };
-const thumb = (id, size = "mqdefault") => `https://i.ytimg.com/vi/${encodeURIComponent(id)}/${size}.jpg`;
+const thumb = (id, size = "mqdefault") =>
+  (window.ECHO_TUNES_THUMB ? window.ECHO_TUNES_THUMB(id) : `https://i.ytimg.com/vi/${encodeURIComponent(id)}/${size}.jpg`);
 const mmss = (ms) => {
   if (ms == null || Number.isNaN(ms)) return "–";
   const s = Math.max(0, Math.round(ms / 1000));
