@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+import pytest
+
+from echo_tunes import tokens
+from echo_tunes.cache import BoundedTTLCache
+from echo_tunes.player.state import PlayerState
+from echo_tunes.player.store import StateStore
+
+from .conftest import SECRET, song
+
+
+# --- tokens -------------------------------------------------------------------------------------
+def test_token_round_trip() -> None:
+    t = tokens.make(SECRET, "dQw4w9WgXcQ", 60, now=1000)
+    assert tokens.check(SECRET, t, now=1030) == "dQw4w9WgXcQ"
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda t: t.replace("dQw4w9WgXcQ", "aaaaaaaaaaa"),  # different video
+        lambda t: t[:-2] + ("AA" if not t.endswith("AA") else "BB"),  # forged signature
+        lambda t: t.replace(".1060.", ".9999999999."),  # extended expiry
+        lambda t: "garbage",
+        lambda t: t + ".extra",
+    ],
+)
+def test_token_tampering_rejected(mutate) -> None:  # type: ignore[no-untyped-def]
+    t = tokens.make(SECRET, "dQw4w9WgXcQ", 60, now=1000)
+    with pytest.raises(tokens.BadToken):
+        tokens.check(SECRET, mutate(t), now=1030)
+
+
+def test_token_expires_and_needs_right_key() -> None:
+    t = tokens.make(SECRET, "dQw4w9WgXcQ", 60, now=1000)
+    with pytest.raises(tokens.BadToken, match="expired"):
+        tokens.check(SECRET, t, now=2000)
+    with pytest.raises(tokens.BadToken):
+        tokens.check(b"other" * 8, t, now=1030)
+
+
+def test_token_rejects_non_video_ids() -> None:
+    with pytest.raises(ValueError):
+        tokens.make(SECRET, "../etc/passwd", 60)
+
+
+# --- cache --------------------------------------------------------------------------------------
+def test_cache_evicts_least_recently_used() -> None:
+    c: BoundedTTLCache[int, int] = BoundedTTLCache(3, ttl=100)
+    for i in range(3):
+        c.set(i, i)
+    c.get(0)  # 0 becomes most recent
+    c.set(3, 3)
+    assert 1 not in c and 0 in c and len(c) == 3
+
+
+def test_cache_expires_entries() -> None:
+    now = [0.0]
+    c: BoundedTTLCache[str, str] = BoundedTTLCache(10, ttl=5, clock=lambda: now[0])
+    c.set("a", "x")
+    c.set("b", "y", ttl=50)
+    now[0] = 10
+    assert c.get("a") is None and c.get("b") == "y"
+
+
+# --- player state -------------------------------------------------------------------------------
+def test_state_tokens_and_navigation() -> None:
+    s = PlayerState()
+    s.replace([song(1), song(2), song(1), song(3)], max_len=10)
+    assert [t.video_id for t in s.tracks] == ["vid00000001", "vid00000002", "vid00000003"]
+    tok = s.token(1)
+    assert s.index_from_token(tok) == 1
+    assert s.next_index() == 1 and s.previous_index() is None
+    s.replace([song(4)], max_len=10)
+    assert s.index_from_token(tok) is None  # old queue
+    s.loop = True
+    assert s.next_index() == 0
+
+
+def test_state_extend_is_capped_and_keeps_upcoming() -> None:
+    s = PlayerState()
+    s.replace([song(i) for i in range(10)], max_len=12)
+    s.index = 8
+    s.extend([song(i) for i in range(10, 20)], max_len=12)
+    assert len(s.tracks) == 12
+    assert s.current is not None and s.current.video_id == "vid00000008"
+
+
+def test_store_round_trip_and_device_limit() -> None:
+    store = StateStore(":memory:", max_devices=3)
+    s = PlayerState()
+    s.replace([song(1)], max_len=10)
+    for i in range(10):
+        store.put(f"device-{i}", s)
+    assert store.count() == 3
+    assert store.get("device-9").tracks[0].video_id == "vid00000001"
+    assert store.get("device-0").tracks == []  # evicted, starts fresh
