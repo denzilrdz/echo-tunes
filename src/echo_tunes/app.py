@@ -109,13 +109,21 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
 
     @app.post("/alexa")
     async def alexa(request: Request) -> Response:
-        declared = request.headers.get("content-length", "0")
-        if not declared.isdigit() or int(declared) > MAX_BODY_BYTES:
+        declared = request.headers.get("content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > MAX_BODY_BYTES):
             return JSONResponse({"error": "bad request"}, status_code=400)
-        body = await request.body()
+        # Read in pieces and stop at the limit: a chunked request has no Content-Length,
+        # and the header can't be trusted anyway.
+        body = bytearray()
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > MAX_BODY_BYTES:
+                return JSONResponse({"error": "bad request"}, status_code=400)
         s = svc(request)
         try:
-            envelope = await asyncio.to_thread(s.verifier.verify, dict(request.headers), body)
+            envelope = await asyncio.to_thread(
+                s.verifier.verify, dict(request.headers), bytes(body)
+            )
         except RequestRejected as exc:
             log.warning("rejected a request to /alexa: %s", exc)
             return JSONResponse({"error": "bad request"}, status_code=400)
