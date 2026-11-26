@@ -27,7 +27,8 @@ description: Security rules for echo-tunes. Use before merging anything that tou
       HttpOnly, SameSite=Lax, Secure behind HTTPS; `DASHBOARD_SESSION_DAYS`, 0 = no expiry and
       renewed on each visit). Scripts use Basic auth. Only `/login`, `/api/login`, `/static/*`,
       the manifest and `/sw.js` are public; no `WWW-Authenticate` for browser requests (no
-      pop-up). Wrong passwords: 1 s delay, 10 per address per 10 minutes.
+      pop-up). Every wrong password (sign-in or Basic) waits 1 s behind one shared lock: no
+      per-address lockout (behind a proxy everyone shares one address).
 
 ## Data and logs
 

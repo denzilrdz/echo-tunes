@@ -27,7 +27,8 @@ A web player, and the dashboard becomes an app you can install on your phone.
 - **Sign in once per device:** with a dashboard password, a sign-in page sets a session cookie
   (180 days, or until you sign out with `ECHO_TUNES_DASHBOARD_SESSION_DAYS=0`), so phones and the
   installed app don't ask again (no more browser pop-up). Changing
-  the password signs everyone out; wrong passwords are slowed down and limited. Monitors and
+  the password signs everyone out; wrong passwords (sign-in or Basic auth) are answered one at a
+  time, a second each. Monitors and
   scripts keep using HTTP Basic auth.
 - Player and browse endpoints in the JSON API (docs/DASHBOARD.md).
 

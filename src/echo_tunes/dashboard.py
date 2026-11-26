@@ -33,7 +33,6 @@ from pydantic import BaseModel
 from pydantic import Field as PydField
 
 from echo_tunes import __version__
-from echo_tunes.cache import BoundedTTLCache
 from echo_tunes.health import memory_mb
 from echo_tunes.history import History
 from echo_tunes.metrics import CONTENT_TYPE, METRICS
@@ -181,7 +180,15 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         if deps.password
         else None
     )
-    failures: BoundedTTLCache[str, int] = BoundedTTLCache(256, ttl=LOGIN_WINDOW)
+    # Every wrong password (sign-in page or Basic auth) waits its turn here, so guessing is
+    # limited to about one try a second in total. A per-address limit would let one LAN
+    # device lock everyone out behind a reverse proxy (they all share its address), and the
+    # right password is never slowed down or refused.
+    wrong_password = asyncio.Lock()
+
+    async def penalty() -> None:
+        async with wrong_password:
+            await asyncio.sleep(WRONG_PASSWORD_DELAY)
 
     def signed_in(request: Request) -> bool:
         if not deps.password:
@@ -209,6 +216,8 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             if refused:
                 return JSONResponse({"detail": refused[1]}, status_code=refused[0])
         path = request.url.path
+        if not signed_in(request) and request.headers.get("authorization"):
+            await penalty()  # a wrong Basic-auth password counts like a wrong sign-in
         if not signed_in(request) and not _public(path):
             if request.method == "GET" and path == "/":
                 return RedirectResponse("/login", status_code=303)
@@ -266,14 +275,9 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     async def login(body: _LoginIn, request: Request) -> Response:
         if not deps.password:
             raise HTTPException(404, "no password is set")
-        who = request.client.host if request.client else "?"
-        if (failures.get(who) or 0) >= LOGIN_ATTEMPTS:
-            raise HTTPException(429, "Too many attempts; wait 10 minutes.")
         if not hmac.compare_digest(body.password.encode(), deps.password.encode()):
-            failures.set(who, (failures.get(who) or 0) + 1)
-            await asyncio.sleep(1)  # slow down guessing
+            await penalty()
             raise HTTPException(401, "Wrong password.")
-        failures.pop(who)
         resp = JSONResponse({"status": "ok"})
         set_session(resp, request)
         return resp
@@ -616,8 +620,7 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
 # --- signing in -----------------------------------------------------------------------------
 SESSION_COOKIE = "echo_tunes_session"
 COOKIE_MAX_DAYS = 400  # the longest browsers keep a cookie
-LOGIN_ATTEMPTS = 10  # wrong passwords per client address...
-LOGIN_WINDOW = 600  # ...per 10 minutes
+WRONG_PASSWORD_DELAY = 1.0  # seconds; wrong passwords are handled one at a time
 
 
 class _LoginIn(BaseModel):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import sys
+import time
 
 from fastapi.testclient import TestClient
 
@@ -208,20 +209,25 @@ def test_sign_in_once_with_a_long_lived_cookie(skill: Skill) -> None:
     assert SESSION_COOKIE
 
 
-def test_login_attempts_are_limited(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import asyncio
+def test_wrong_passwords_are_slowed_down_but_never_lock_out(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Security review: a per-address lockout let one device behind the same reverse proxy lock
+    everyone out, and wrong Basic-auth passwords weren't limited at all."""
+    from echo_tunes import dashboard
 
-    async def no_wait(_: float) -> None:
-        return None
-
-    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    monkeypatch.setattr(dashboard, "WRONG_PASSWORD_DELAY", 0.05)
     skill.history = History(":memory:", 15)
     c = TestClient(
         create_dashboard(deps(skill, password="s3cret")), base_url="http://localhost:8081"
     )
-    for _ in range(10):
+    bad = base64.b64encode(b"admin:nope").decode()
+    t0 = time.monotonic()
+    for _ in range(4):
         assert c.post("/api/login", json={"password": "x"}).status_code == 401
-    assert c.post("/api/login", json={"password": "s3cret"}).status_code == 429
+        assert c.get("/api/now", headers={"Authorization": f"Basic {bad}"}).status_code == 401
+    assert time.monotonic() - t0 >= 8 * 0.05  # every wrong try waited
+    t0 = time.monotonic()
+    assert c.post("/api/login", json={"password": "s3cret"}).status_code == 200  # never locked out
+    assert time.monotonic() - t0 < 0.05
 
 
 def test_a_session_can_last_until_signed_out(skill: Skill) -> None:

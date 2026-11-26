@@ -66,8 +66,8 @@ it).
 
 **Sign in once per device.** With a password set, the dashboard shows a sign-in page; after
 that the phone, browser or installed app stays signed in for 180 days, or for good with
-`ECHO_TUNES_DASHBOARD_SESSION_DAYS=0` (a session cookie; ten
-wrong passwords lock that address out for 10 minutes). Changing the password signs every device
+`ECHO_TUNES_DASHBOARD_SESSION_DAYS=0` (a session cookie; wrong
+passwords are answered one at a time, a second each, so guessing is slow). Changing the password signs every device
 out; *Sign out* is at the bottom of the page. Scripts and monitors use the same password as
 HTTP Basic auth (`curl -u admin:PASSWORD`, Uptime Kuma's *Authentication → HTTP Basic*); see
 [MONITORING.md](MONITORING.md).
