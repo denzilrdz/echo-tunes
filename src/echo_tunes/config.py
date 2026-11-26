@@ -65,6 +65,10 @@ class Settings(BaseSettings):
         default=None, description="Optional password for the dashboard and /metrics (user: admin)."
     )
     history_days: int = Field(default=15, ge=0, le=3650, description="0 = don't keep history.")
+    # Dashboard player: "Skip now" on an Echo cuts the current song's audio stream so the Echo
+    # moves on. Alexa has no official way to do this; it only works if the Echo hasn't already
+    # downloaded the whole song, so it's off unless you want to try it.
+    experimental_skip: bool = False
     # Friendly Echo names: "<end of device ID>=Living room,<end>=Kitchen" (IDs are long; the
     # dashboard shows the last 12 characters to copy from).
     device_names: Annotated[dict[str, str], NoDecode] = Field(default_factory=dict)

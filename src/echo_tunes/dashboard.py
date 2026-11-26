@@ -5,7 +5,9 @@ port that Amazon and the Echo use. Keep this port private: bind it to localhost 
 or publish it only inside your LAN or a VPN (WireGuard, Tailscale Serve, ...). An optional password
 (``ECHO_TUNES_DASHBOARD_PASSWORD``, HTTP Basic, user ``admin``) adds a second lock.
 
-Read-only: nothing here can change what plays.
+Reading (now playing, history, browsing YouTube Music) works without a password on a private
+network. Anything that changes something (play, queue, skip, clear history) is a POST that
+needs the password to be set, a JSON body and a same-origin request.
 """
 
 from __future__ import annotations
@@ -19,18 +21,23 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from importlib import resources
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from pydantic import Field as PydField
 
 from echo_tunes import __version__
 from echo_tunes.health import memory_mb
 from echo_tunes.history import History
 from echo_tunes.metrics import CONTENT_TYPE, METRICS
+from echo_tunes.music import browse
+from echo_tunes.music.catalog import NotSignedIn, Track
 from echo_tunes.player.state import PlayerState
 from echo_tunes.player.store import StateStore
+from echo_tunes.tokens import is_video_id
 
 ID_TAIL = 12  # characters of a device ID shown (and used for names)
 STALE_AFTER = 6 * 3600  # an Echo silent this long is shown as idle
@@ -38,8 +45,9 @@ STALE_AFTER = 6 * 3600  # an Echo silent this long is shown as idle
 
 def csp(public_origin: str) -> str:
     media = f"'self' {public_origin}".strip()
+    images = " ".join(f"https://{h}" for h in sorted(browse.IMAGE_HOSTS))
     return (
-        "default-src 'self'; img-src 'self' https://i.ytimg.com data:; style-src 'self'; "
+        f"default-src 'self'; img-src 'self' {images} data:; style-src 'self'; "
         f"script-src 'self'; connect-src 'self'; media-src {media}; frame-ancestors 'none'; "
         "base-uri 'none'; form-action 'none'"
     )
@@ -61,6 +69,12 @@ class DashboardDeps:
     # Setup page: run the checks, and give the browser a test stream link.
     run_checks: Callable[[], Awaitable[dict[str, Any]]] | None = None
     test_play: Callable[[], dict[str, Any]] | None = None
+    # The player (all optional, so the dashboard also works without them in tests).
+    catalog: Any = None  # YTMusicCatalog: search and browse
+    skill: Any = None  # Skill: queue on an Echo, stream links for the browser
+    cut_stream: Callable[[str], int] | None = None  # "skip now": cut a song's open streams
+    experimental_skip: bool = False
+    location: str = ""
 
 
 def host_allowed(host_header: str, extra: frozenset[str]) -> bool:
@@ -171,6 +185,10 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             and request.headers.get("sec-fetch-mode") != "navigate"
         ):
             return Response(status_code=403)
+        if request.method not in ("GET", "HEAD"):
+            refused = _write_refused(request)
+            if refused:
+                return JSONResponse({"detail": refused[1]}, status_code=refused[0])
         if expected and not hmac.compare_digest(
             request.headers.get("authorization", "").encode(), expected.encode()
         ):
@@ -267,7 +285,205 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     async def metrics() -> Response:
         return Response(METRICS.render(), media_type=CONTENT_TYPE)
 
+    _player_routes(app, deps)
     return app
+
+
+# --- the player -------------------------------------------------------------------------------
+BROWSER_DEVICE = "dashboard-browser"  # history rows for songs played in a browser
+MAX_TRACKS = 200
+
+
+class _TrackIn(BaseModel):
+    video_id: str = PydField(min_length=11, max_length=11)
+    title: str = PydField(max_length=200)
+    artist: str = PydField(default="", max_length=200)
+    duration: int | None = PydField(default=None, ge=0, le=86400)
+
+    def track(self) -> Track:
+        if not is_video_id(self.video_id):
+            raise HTTPException(422, "bad video ID")
+        return Track(
+            self.video_id, self.title.strip() or "Unknown", self.artist.strip(), self.duration
+        )
+
+
+class _QueueIn(BaseModel):
+    device: str = PydField(min_length=1, max_length=64)
+    mode: Literal["now", "next", "queue"]
+    source: str = PydField(default="Dashboard", max_length=120)
+    tracks: list[_TrackIn] = PydField(min_length=1, max_length=MAX_TRACKS)
+
+
+class _DeviceIn(BaseModel):
+    device: str = PydField(min_length=1, max_length=64)
+
+
+class _VideoIn(BaseModel):
+    video_id: str = PydField(min_length=11, max_length=11)
+
+
+class _PlayedIn(BaseModel):
+    track: _TrackIn
+    source: str = PydField(default="Dashboard player", max_length=120)
+
+
+def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
+    def need(thing: Any) -> Any:
+        if thing is None:
+            raise HTTPException(404, "not available")
+        return thing
+
+    def action(request: Request) -> None:
+        """Every state-changing call needs the password to be set (the middleware has checked
+        it, and that the request is same-origin JSON: see _write_refused)."""
+        if not deps.password:
+            raise HTTPException(
+                403,
+                "Set ECHO_TUNES_DASHBOARD_PASSWORD to use the player and other actions.",
+            )
+
+    async def youtube(call: Awaitable[Any]) -> Any:
+        try:
+            return await call
+        except NotSignedIn as exc:
+            raise HTTPException(409, "Sign in to YouTube Music first: echo-tunes login") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except Exception as exc:
+            METRICS.youtube_errors.inc()
+            raise HTTPException(502, "YouTube Music didn't answer; try again.") from exc
+
+    def items(xs: list[browse.Item]) -> list[dict[str, Any]]:
+        return [x.to_dict() for x in xs]
+
+    def tracks(xs: list[Track]) -> list[dict[str, Any]]:
+        return [_track(t) for t in xs]
+
+    def full_device(short: str) -> str:
+        full = _full_id(deps.store, short)
+        if full is None or full.startswith("\x00"):
+            raise HTTPException(404, "unknown Echo")
+        return full
+
+    @app.get("/api/player")
+    async def player() -> dict[str, Any]:
+        echos = []
+        for device, st, updated in deps.store.all():
+            if device == BROWSER_DEVICE:
+                continue
+            entry = _now_entry(device, st, updated, deps.device_names)
+            echos.append({k: entry[k] for k in ("id", "name", "playing", "current", "updated")})
+        echos.sort(key=lambda e: (not e["playing"], -e["updated"]))
+        return {
+            "actions": bool(deps.password) and deps.skill is not None,
+            "experimental_skip": deps.experimental_skip,
+            "signed_in": deps.signed_in(),
+            "echos": echos,
+        }
+
+    @app.get("/api/search")
+    async def search(
+        q: str = Query(min_length=1, max_length=100),
+        kind: browse.Kind = "song",
+    ) -> dict[str, Any]:
+        found = await youtube(need(deps.catalog).search_items(q.strip(), kind))
+        return {"kind": kind, "items": items(found)}
+
+    @app.get("/api/browse/home")
+    async def home() -> dict[str, Any]:
+        rows = await youtube(need(deps.catalog).home())
+        return {"sections": [{"title": s["title"], "items": items(s["items"])} for s in rows]}
+
+    @app.get("/api/browse/explore")
+    async def explore() -> dict[str, Any]:
+        cat = need(deps.catalog)
+        charts = await youtube(cat.charts(deps.location))
+        moods = await youtube(cat.moods())
+        return {
+            "charts": items(charts["playlists"]),
+            "artists": items(charts["artists"]),
+            "moods": moods,
+        }
+
+    @app.get("/api/browse/mood")
+    async def mood(params: str = Query(min_length=4, max_length=300)) -> dict[str, Any]:
+        return {"items": items(await youtube(need(deps.catalog).mood_playlists(params)))}
+
+    @app.get("/api/browse/library")
+    async def library() -> dict[str, Any]:
+        return {"items": items(await youtube(need(deps.catalog).library_playlists()))}
+
+    @app.get("/api/browse/tracks")
+    async def tracks_of(
+        kind: browse.Kind, id: str = Query(min_length=2, max_length=80)
+    ) -> dict[str, Any]:
+        title, found = await youtube(need(deps.catalog).items_of(kind, id))
+        return {"title": title, "tracks": tracks(found[:MAX_TRACKS])}
+
+    @app.post("/api/play/stream-link")
+    async def stream_link(body: _VideoIn, request: Request) -> dict[str, Any]:
+        """A signed link for this browser to play a song through the public address."""
+        action(request)
+        if not is_video_id(body.video_id):
+            raise HTTPException(422, "bad video ID")
+        need(deps.skill).resolver.warm(body.video_id)
+        return {"url": deps.skill.stream_url(body.video_id, ttl_seconds=3 * 3600)}
+
+    @app.post("/api/play/played")
+    async def played(body: _PlayedIn, request: Request) -> dict[str, str]:
+        """The browser started a song: keep it in the history like an Echo's."""
+        action(request)
+        deps.history.started(BROWSER_DEVICE, body.track.track(), body.source)
+        return {"status": "ok"}
+
+    @app.post("/api/play/echo")
+    async def queue_on_echo(body: _QueueIn, request: Request) -> dict[str, Any]:
+        action(request)
+        device = full_device(body.device)
+        try:
+            result: dict[str, Any] = await need(deps.skill).dashboard_queue(
+                device, [t.track() for t in body.tracks], body.mode, body.source
+            )
+            return result
+        except LookupError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/play/skip")
+    async def skip(body: _DeviceIn, request: Request) -> dict[str, Any]:
+        action(request)
+        if not deps.experimental_skip or deps.cut_stream is None:
+            raise HTTPException(403, "Turn on ECHO_TUNES_EXPERIMENTAL_SKIP to try this.")
+        video = await need(deps.skill).dashboard_skip(full_device(body.device))
+        if video is None:
+            raise HTTPException(409, "Nothing is playing on this Echo.")
+        cut = deps.cut_stream(video)
+        return {
+            "cut": cut,
+            "note": "Skipping…"
+            if cut
+            else "The Echo already has the whole song; it can't be "
+            "cut short. The next song is queued.",
+        }
+
+    @app.post("/api/history/clear")
+    async def clear_history(request: Request) -> dict[str, int]:
+        action(request)
+        return {"removed": deps.history.clear()}
+
+
+def _write_refused(request: Request) -> tuple[int, str] | None:
+    """Anything but GET must be JSON (a plain HTML form can't send it) from this dashboard's
+    own page. Checked before the body is read."""
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        return 415, "JSON only"
+    site = request.headers.get("sec-fetch-site")
+    if site is not None and site not in ("same-origin", "none"):
+        return 403, "cross-site request refused"
+    origin = request.headers.get("origin")
+    if origin and origin.split("://", 1)[-1].lower() != request.headers.get("host", "").lower():
+        return 403, "cross-origin request refused"
+    return None
 
 
 def _full_id(store: StateStore, short: str | None) -> str | None:

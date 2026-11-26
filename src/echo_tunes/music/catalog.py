@@ -6,14 +6,17 @@ import asyncio
 import difflib
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar, cast
 
 from echo_tunes.cache import BoundedTTLCache
+from echo_tunes.music import browse
 from echo_tunes.tokens import is_video_id
 
 log = logging.getLogger(__name__)
+T = TypeVar("T")
 
 LIBRARY_LIMIT = 200  # songs taken from a playlist or liked songs
 # Alexa gives a skill about 8 seconds to answer, so no YouTube Music call may take longer than
@@ -112,6 +115,8 @@ class YTMusicCatalog:
         self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ytmusic")
         self._searches: BoundedTTLCache[str, Track] = BoundedTTLCache(256, ttl=3600)
         self._lists: BoundedTTLCache[str, list[dict[str, Any]]] = BoundedTTLCache(4, ttl=600)
+        # Browsing results for the player (search, charts, moods, home): small and short-lived.
+        self._browsed: BoundedTTLCache[str, Any] = BoundedTTLCache(128, ttl=900)
 
     @property
     def signed_in(self) -> bool:
@@ -186,6 +191,103 @@ class YTMusicCatalog:
             await self._call("add_history_item", song)
         except Exception as exc:
             log.info("couldn't add %s to history: %s", video_id, exc)
+
+    # --- browsing, for the dashboard's player -------------------------------------------------
+    async def search_items(self, query: str, kind: browse.Kind) -> list[browse.Item]:
+        key = f"search:{kind}:{normalise(query)}"
+        return await self._browse(
+            key,
+            lambda: self._call(
+                "search", query, filter=browse.SEARCH_FILTERS[kind], limit=browse.MAX_ITEMS
+            ),
+            browse.parse_all,
+        )
+
+    async def home(self) -> list[dict[str, Any]]:
+        """Home-page rows: quick picks, mixes and playlists (personal when signed in)."""
+        return await self._browse("home", lambda: self._call("get_home", limit=6), browse.sections)
+
+    async def charts(self, country: str) -> dict[str, Any]:
+        """Trending: chart playlists for the country, and its top artists."""
+
+        def shape(c: Any) -> dict[str, Any]:
+            c = c or {}
+            lists = [*(c.get("videos") or []), *(c.get("languages") or [])]
+            return {
+                "playlists": browse.parse_all(lists, 20),
+                "artists": browse.parse_all(c.get("artists"), 20),
+            }
+
+        code = country.upper() if re.fullmatch(r"[A-Za-z]{2}", country or "") else "ZZ"
+        return await self._browse(f"charts:{code}", lambda: self._call("get_charts", code), shape)
+
+    async def moods(self) -> list[dict[str, Any]]:
+        """Moods & genres: sections of named categories, each opened with its params."""
+
+        def shape(m: Any) -> list[dict[str, Any]]:
+            out = []
+            for title, cats in (m or {}).items():
+                chips = [
+                    {"title": str(c.get("title", ""))[:60], "params": c["params"]}
+                    for c in cats or []
+                    if isinstance(c, dict) and browse.is_mood_params(str(c.get("params", "")))
+                ][:60]
+                if chips:
+                    out.append({"title": str(title)[:60], "categories": chips})
+            return out
+
+        return await self._browse("moods", lambda: self._call("get_mood_categories"), shape)
+
+    async def mood_playlists(self, params: str) -> list[browse.Item]:
+        if not browse.is_mood_params(params):
+            return []
+        return await self._browse(
+            f"mood:{params}", lambda: self._call("get_mood_playlists", params), browse.parse_all
+        )
+
+    async def library_playlists(self) -> list[browse.Item]:
+        self._need_account()
+        liked = browse.Item("playlist", "LM", "Liked songs", "Your likes")
+        lists = await self._cached_list("playlists", "get_library_playlists", limit=None)
+        return [liked, *(i for i in browse.parse_all(lists) if i.id != "LM")]
+
+    async def items_of(self, kind: browse.Kind, item_id: str) -> tuple[str, list[Track]]:
+        """The songs behind an item: a playlist, album, artist's top songs, or a song's radio."""
+        if kind == "song":
+            if not is_video_id(item_id):
+                raise ValueError("bad video ID")
+            return "Radio", await self.radio(item_id, 25)
+        if not browse.is_list_id(item_id):
+            raise ValueError("bad ID")
+        if kind == "playlist":
+            if item_id == "LM":
+                liked = await self.liked_songs()
+                return "Liked songs", liked.tracks
+            if item_id.startswith("RD"):  # mixes and radios
+                data = await self._call("get_watch_playlist", playlistId=item_id, limit=50)
+                return "Mix", _tracks((data or {}).get("tracks"))
+            data = await self._call("get_playlist", item_id, limit=LIBRARY_LIMIT)
+            return str((data or {}).get("title") or "Playlist"), _tracks((data or {}).get("tracks"))
+        if kind == "album":
+            data = await self._call("get_album", item_id)
+            artist = _artists(data or {})
+            tracks = [
+                t if t.artist else Track(t.video_id, t.title, artist, t.duration)
+                for t in _tracks((data or {}).get("tracks"))
+            ]
+            return str((data or {}).get("title") or "Album"), tracks
+        data = await self._call("get_artist", item_id)
+        songs = ((data or {}).get("songs") or {}).get("results")
+        return str((data or {}).get("name") or "Artist"), _tracks(songs)
+
+    async def _browse(
+        self, key: str, fetch: Callable[[], Awaitable[Any]], shape: Callable[[Any], T]
+    ) -> T:
+        cached = self._browsed.get(key)
+        if cached is None:
+            cached = shape(await fetch())
+            self._browsed.set(key, cached)
+        return cast(T, cached)
 
     # --- helpers --------------------------------------------------------------------------------
     def _need_account(self) -> None:
