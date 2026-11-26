@@ -65,6 +65,7 @@ ignore = ["S101"] # asserts are fine in tests
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S108"]
+"scripts/build_demo.py" = ["E501"] # long HTML meta tags
 
 [tool.mypy]
 strict = true

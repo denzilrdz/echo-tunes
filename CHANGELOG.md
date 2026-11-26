@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A landing page at https://denzilrdz.github.io/echo-tunes/ with search and link-preview
+  metadata (description, Open Graph, structured data, sitemap), screenshots in the README and
+  docs, and a social preview image. `scripts/screenshots.py` regenerates them from the demo
+  with made-up songs and generated artwork (no real album art in the repo).
+
+### Added
+
 - A public [dashboard demo](https://denzilrdz.github.io/echo-tunes/) with sample data, built
   from the real dashboard files and published to GitHub Pages.
 
