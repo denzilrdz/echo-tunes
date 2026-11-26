@@ -18,6 +18,7 @@ const DEMO = typeof window.ECHO_TUNES_DEMO === "function" ? window.ECHO_TUNES_DE
 const api = async (path) => {
   if (DEMO) return DEMO(path);
   const r = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
+  if (r.status === 401) { location.replace("/login"); throw new Error("signed out"); }
   if (!r.ok && r.status !== 503) throw new Error(`${path}: ${r.status}`);
   return r.json();
 };
@@ -332,4 +333,6 @@ async function refresh() {
 setInterval(() => { if (!document.hidden && ["now", "monitor", "play"].includes(state.tab)) refresh(); }, 5000);
 setInterval(() => { if (!document.hidden && state.tab === "history") loadHistory(true).catch(() => {}); }, 30000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
-show((location.hash.slice(1) in { play: 1, now: 1, history: 1, stats: 1, monitor: 1, setup: 1 }) ? location.hash.slice(1) : "play");
+const TABS = { play: 1, now: 1, history: 1, stats: 1, monitor: 1, setup: 1 };
+window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t in TABS && t !== state.tab) show(t); });
+show((location.hash.slice(1) in TABS) ? location.hash.slice(1) : "play");

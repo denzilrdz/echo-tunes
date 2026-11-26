@@ -62,7 +62,15 @@ it may do nothing; it's off by default.
 **Actions need a password.** Browsing works on any private network, but anything that changes
 something (play, queue, skip, clear history) only works when `ECHO_TUNES_DASHBOARD_PASSWORD`
 is set. It's then a JSON request from the dashboard's own page (other websites can't trigger
-it). Your monitoring needs the password too once it's set (see [MONITORING.md](MONITORING.md)).
+it).
+
+**Sign in once per device.** With a password set, the dashboard shows a sign-in page; after
+that the phone, browser or installed app stays signed in for 180 days, or for good with
+`ECHO_TUNES_DASHBOARD_SESSION_DAYS=0` (a session cookie; ten
+wrong passwords lock that address out for 10 minutes). Changing the password signs every device
+out; *Sign out* is at the bottom of the page. Scripts and monitors use the same password as
+HTTP Basic auth (`curl -u admin:PASSWORD`, Uptime Kuma's *Authentication → HTTP Basic*); see
+[MONITORING.md](MONITORING.md).
 
 ## Install it as an app
 
@@ -112,7 +120,8 @@ private as long as you don't publish 8081 to the internet yourself.
 | `ECHO_TUNES_DASHBOARD_PORT` | `8081` | Port of the dashboard, `/metrics` and the JSON API. `0` turns it off. |
 | `ECHO_TUNES_DASHBOARD_HOST` | `127.0.0.1` (`0.0.0.0` in the Docker image) | Address it listens on. The image listens on all interfaces so the port can be published; publish it privately. |
 | `ECHO_TUNES_DASHBOARD_HOSTS` | (none) | Extra host names you open it by, comma-separated (e.g. `music-dash.lan`). IP addresses, `localhost` and your public URL's name always work; other names are refused. |
-| `ECHO_TUNES_DASHBOARD_PASSWORD` | (none) | Optional password (HTTP Basic, user `admin`). |
+| `ECHO_TUNES_DASHBOARD_PASSWORD` | (none) | Password: sign-in page for browsers, HTTP Basic (user `admin`) for scripts. Needed for the player's actions. |
+| `ECHO_TUNES_DASHBOARD_SESSION_DAYS` | `180` | How long a device stays signed in. `0` = until you sign out or change the password. |
 | `ECHO_TUNES_HISTORY_DAYS` | `15` | Days of play history to keep. `0` keeps none (and deletes what's there). |
 | `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `BEWY4D23ORJQ=Living room,A6TA55XMCKTY=Kitchen`. |
 | `ECHO_TUNES_EXPERIMENTAL_SKIP` | `false` | Let the player try to skip the song playing on an Echo (see [Player](#player)). |

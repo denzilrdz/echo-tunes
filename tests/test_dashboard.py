@@ -170,3 +170,69 @@ def test_dns_rebinding_and_cross_site_reads_are_refused(skill: Skill) -> None:
     assert c.get("/api/now", headers=xs).status_code == 403
     nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
     assert c.get("/", headers=nav).status_code == 200  # a link from another site still opens it
+
+
+def test_sign_in_once_with_a_long_lived_cookie(skill: Skill) -> None:
+    from echo_tunes.dashboard import SESSION_COOKIE, session_valid, session_value
+
+    skill.history = History(":memory:", 15)
+    app = create_dashboard(deps(skill, password="s3cret"))
+    c = TestClient(app, base_url="http://localhost:8081", headers={"Sec-Fetch-Site": "same-origin"})
+    first = c.get("/", follow_redirects=False)
+    assert first.status_code == 303 and first.headers["location"] == "/login"
+    assert "Sign in" in c.get("/login").text
+    for public in ("/static/app.css", "/manifest.webmanifest", "/sw.js"):
+        assert c.get(public).status_code == 200, public
+    browser = c.get("/api/now", headers={"Sec-Fetch-Mode": "cors"})
+    assert browser.status_code == 401 and "www-authenticate" not in browser.headers  # no pop-up
+
+    assert c.post("/api/login", json={"password": "nope"}).status_code == 401
+    ok = c.post("/api/login", json={"password": "s3cret"})
+    assert ok.status_code == 200
+    cookie = ok.headers["set-cookie"]
+    assert "HttpOnly" in cookie and "SameSite=lax" in cookie and f"Max-Age={180 * 86400}" in cookie
+    assert c.get("/api/now").status_code == 200  # the cookie is enough from now on
+    assert c.get("/", follow_redirects=False).status_code == 200
+    assert c.get("/login", follow_redirects=False).status_code == 303
+
+    c.post("/api/logout", json={})
+    assert c.get("/api/now").status_code == 401
+
+    # Sessions expire, and changing the password signs everyone out.
+    v = session_value("s3cret", 2_000_000_000)
+    assert session_valid("s3cret", v, 1_900_000_000)
+    assert not session_valid("s3cret", v, 2_000_000_001)
+    assert not session_valid("changed", v, 1_900_000_000)
+    assert not session_valid("s3cret", "9999999999.forged", 0)
+    assert not session_valid("s3cret", "", 0)
+    assert SESSION_COOKIE
+
+
+def test_login_attempts_are_limited(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import asyncio
+
+    async def no_wait(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    skill.history = History(":memory:", 15)
+    c = TestClient(
+        create_dashboard(deps(skill, password="s3cret")), base_url="http://localhost:8081"
+    )
+    for _ in range(10):
+        assert c.post("/api/login", json={"password": "x"}).status_code == 401
+    assert c.post("/api/login", json={"password": "s3cret"}).status_code == 429
+
+
+def test_a_session_can_last_until_signed_out(skill: Skill) -> None:
+    from echo_tunes.dashboard import session_valid, session_value
+
+    skill.history = History(":memory:", 15)
+    app = create_dashboard(deps(skill, password="s3cret", session_days=0))
+    c = TestClient(app, base_url="http://localhost:8081")
+    first = c.post("/api/login", json={"password": "s3cret"}).headers["set-cookie"]
+    assert "echo_tunes_session=0." in first and f"Max-Age={400 * 86400}" in first
+    again = c.get("/")  # every visit renews the browser's cookie
+    assert again.status_code == 200 and "echo_tunes_session=0." in again.headers["set-cookie"]
+    assert session_valid("s3cret", session_value("s3cret", 0), 4_000_000_000)
+    assert not session_valid("other", session_value("s3cret", 0), 0)

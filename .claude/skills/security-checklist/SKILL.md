@@ -23,6 +23,11 @@ description: Security rules for echo-tunes. Use before merging anything that tou
 - [ ] **State-changing endpoints** (play, queue, clear history): POST only, password required
       (refuse when none is set), same-origin check (`Origin`/`Sec-Fetch-Site`), bounded inputs.
 - [ ] `/metrics` and the API sit behind the same password when one is set.
+- [ ] Browsers sign in on `/login` (session cookie: `<expiry>.<HMAC keyed by the password>`,
+      HttpOnly, SameSite=Lax, Secure behind HTTPS; `DASHBOARD_SESSION_DAYS`, 0 = no expiry and
+      renewed on each visit). Scripts use Basic auth. Only `/login`, `/api/login`, `/static/*`,
+      the manifest and `/sw.js` are public; no `WWW-Authenticate` for browser requests (no
+      pop-up). Wrong passwords: 1 s delay, 10 per address per 10 minutes.
 
 ## Data and logs
 

@@ -26,6 +26,7 @@ async function post(path, body) {
     body: JSON.stringify(body || {}),
     cache: "no-store",
   });
+  if (r.status === 401) { location.replace("/login"); throw new Error("Signed out"); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Error ${r.status}`);
   return data;
@@ -412,6 +413,10 @@ if ("mediaSession" in navigator) {
   navigator.mediaSession.setActionHandler("previoustrack", () => prev());
 }
 
+$("#sign-out").addEventListener("click", async () => {
+  try { await post("/api/logout", {}); } finally { location.replace("/login"); }
+});
+
 // ---------- clear history (History tab) ----------
 let clearArmed = 0;
 $("#history-clear").addEventListener("click", async () => {
@@ -438,6 +443,7 @@ async function playerRefresh() {
     P.echoAt = Date.now();
   } catch { return; }
   $("#history-clear").hidden = !P.info.actions;
+  $("#sign-out").hidden = DEMO || !P.info.actions;
   renderTargets();
   if (!P.view) {
     setView({ type: "home" });

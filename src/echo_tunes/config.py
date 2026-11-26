@@ -65,6 +65,9 @@ class Settings(BaseSettings):
         default=None, description="Optional password for the dashboard and /metrics (user: admin)."
     )
     history_days: int = Field(default=15, ge=0, le=3650, description="0 = don't keep history.")
+    # How long a phone or browser stays signed in to the dashboard; 0 = until you sign out
+    # (or change the password). Fine on a private network.
+    dashboard_session_days: int = Field(default=180, ge=0, le=3650)
     # Dashboard player: "Skip now" on an Echo cuts the current song's audio stream so the Echo
     # moves on. Alexa has no official way to do this; it only works if the Echo hasn't already
     # downloaded the whole song, so it's off unless you want to try it.

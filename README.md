@@ -213,6 +213,7 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_DASHBOARD_HOST`            | `127.0.0.1` | Address the dashboard listens on (`0.0.0.0` in the Docker image, so its port can be published privately). |
 | `ECHO_TUNES_DASHBOARD_HOSTS`           | (none)     | Extra host names you open the dashboard by, comma-separated, no port (e.g. `music-dash.lan`). |
 | `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Password for the dashboard (user `admin`); needed to play, queue and clear history from it. |
+| `ECHO_TUNES_DASHBOARD_SESSION_DAYS`    | `180`      | Days a phone or browser stays signed in to the dashboard (`0` = until you sign out). |
 | `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |
 | `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `BEWY4D23ORJQ=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
 | `ECHO_TUNES_EXPERIMENTAL_SKIP`         | `false`    | Let the player try to skip the song playing on an Echo ([how it works](docs/DASHBOARD.md#player)). |

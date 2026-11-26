@@ -24,6 +24,11 @@ A web player, and the dashboard becomes an app you can install on your phone.
   added to a phone's home screen when opened over HTTPS. `ECHO_TUNES_APP_NAME`,
   `ECHO_TUNES_APP_COLOR` and `ECHO_TUNES_APP_ICON` change its name, colour and icon.
 - **Clear history** on the History tab.
+- **Sign in once per device:** with a dashboard password, a sign-in page sets a session cookie
+  (180 days, or until you sign out with `ECHO_TUNES_DASHBOARD_SESSION_DAYS=0`), so phones and the
+  installed app don't ask again (no more browser pop-up). Changing
+  the password signs everyone out; wrong passwords are slowed down and limited. Monitors and
+  scripts keep using HTTP Basic auth.
 - Player and browse endpoints in the JSON API (docs/DASHBOARD.md).
 
 ### Changed
