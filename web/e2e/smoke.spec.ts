@@ -114,3 +114,27 @@ test("the real dashboard: sign in, browse without YouTube, sign out", async ({ p
   await expect(page).toHaveURL(/\/login$/);
   expect(problems).toEqual([]);
 });
+
+test("an unreachable server gets an explanation that clears once it answers", async ({ page }) => {
+  // e.g. a phone's own "Private DNS" resolving the dashboard to an address that doesn't serve it
+  const problems = await watch(page, [/Failed to load resource/, /ERR_FAILED/]);
+  await page.goto(`${DASHBOARD}/login`);
+  await page.getByRole("textbox", { name: "Password" }).fill("e2e-password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/#\//);
+  await page.keyboard.press("Escape"); // the first-run question
+
+  await page.route("**/api/**", (route) => route.abort("connectionrefused"));
+  await page.goto(`${DASHBOARD}/#/server/status`);
+  const screen = page.getByRole("alert").filter({ hasText: "Can't reach your echo-tunes server" });
+  await expect(screen).toBeVisible({ timeout: 15_000 });
+  await expect(screen).toContainText("127.0.0.1:4174");
+  await screen.getByText("Why might this happen?").click();
+  await expect(screen).toContainText("Private DNS");
+  await expect(page.getByRole("button", { name: "Try again" })).toBeEnabled();
+
+  await page.unroute("**/api/**");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(screen).toBeHidden();
+  expect(problems).toEqual([]);
+});

@@ -16,6 +16,9 @@ All notable changes to this project are documented here. The format follows
   (this phone or one of your Echos) and selects that every time; *Playing on Living room* is
   always shown and one tap switches. On an Echo, buttons say *Play next*, pause and previous
   say why they're off, and an idle Echo offers *Play here instead*.
+- When the server can't be reached at all (away from home, or a phone's own "Private DNS"
+  skipping your network's DNS), the app says so with what to check, keeps what's on screen,
+  turns playing off and tries again by itself until the server answers.
 - The install manifest has screenshots and shortcuts (Search, Devices) for a richer install
   dialog.
 

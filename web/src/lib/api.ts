@@ -1,6 +1,8 @@
 // Talks to the dashboard's JSON API. The public demo (GitHub Pages) has no server: it swaps in
 // a fake transport (src/demo/demo-api.ts) before the app starts.
 
+import { setHealthCheck, useConnection } from "@/store/connection";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -43,8 +45,10 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown):
   try {
     r = await fetch(path, init);
   } catch {
-    throw new ApiError("Can't reach echo-tunes. Check your connection.", 0);
+    useConnection.getState().failed(); // no answer at all (not an HTTP error)
+    throw new ApiError("Can't reach your echo-tunes server.", 0);
   }
+  useConnection.getState().succeeded();
   if (r.status === 401 && path !== "/api/login") {
     goToSignIn();
     throw new ApiError("Signed out", 401);
@@ -68,3 +72,14 @@ export const qs = (params: Record<string, string | number | null | undefined>): 
   const s = p.toString();
   return s ? `?${s}` : "";
 };
+
+// The connection screen's "Try again": any answer from /api/health means the server is there.
+setHealthCheck(async () => {
+  if (fake) return true;
+  try {
+    await fetch("/api/health", { cache: "no-store", credentials: "same-origin" });
+    return true;
+  } catch {
+    return false;
+  }
+});

@@ -18,6 +18,7 @@ import { usePlayerInfo } from "@/lib/queries";
 import { KEYS, load } from "@/lib/storage";
 import { usePlayer } from "@/store/player";
 import { useUi } from "@/store/ui";
+import { ConnectionScreen } from "./connection";
 import { DevicePill, MiniPlayer, PlayerBar } from "./player/bars";
 import { NowPanel, usePanel } from "./player/now-panel";
 import { MenuOutlet, preloadMenu } from "./ui/menu";
@@ -203,6 +204,7 @@ export function AppShell() {
       <SheetsOutlet />
       <MenuOutlet />
       <Toaster />
+      <ConnectionScreen />
       <PlayerSync />
     </>
   );

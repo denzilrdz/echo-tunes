@@ -6,6 +6,7 @@ import { ApiError, get, post, qs } from "@/lib/api";
 import { trackArt } from "@/lib/art";
 import { KEYS, load, save } from "@/lib/storage";
 import type { EchoSummary, PlayerInfo, QueueMode, Track, TracksResponse } from "@/lib/types";
+import { useConnection } from "./connection";
 import { toast } from "./toast";
 import { useUi } from "./ui";
 
@@ -73,6 +74,10 @@ export const usePlayer = create<PlayerStore>((set, getState) => {
   const onEcho = () => s().target !== BROWSER;
   const targetEcho = () => s().info.echos.find((e) => e.id === s().target);
   const needActions = (): boolean => {
+    if (useConnection.getState().offline) {
+      toast("Can't reach your echo-tunes server right now.", { tone: "error" });
+      return false;
+    }
     if (s().info.actions) return true;
     toast("Playing from here needs a dashboard password on the server.", { tone: "error" });
     return false;

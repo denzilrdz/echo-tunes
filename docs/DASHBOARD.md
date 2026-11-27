@@ -108,6 +108,13 @@ secure addresses, e.g. Tailscale Serve, Caddy with a LAN certificate, or `localh
 - **iPhone/iPad (Safari):** Share → *Add to Home Screen*.
 - **Desktop (Chrome, Edge):** the install icon in the address bar.
 
+**Phones need your home network's DNS.** If the dashboard's name resolves to the server only
+through your network's DNS, a phone or browser with its own "secure DNS" / "Private DNS"
+(Chrome's *Use secure DNS* with a fixed provider, Android *Private DNS*, iCloud Private Relay)
+gets the public address instead and can't reach the app: it then shows *Can't reach your
+echo-tunes server* with what to change. See
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-dashboard-says-it-cant-reach-the-server).
+
 It opens full screen with its own icon, and follows the phone's light or dark mode (or the
 choice in Settings). Change how it looks without touching code:
 

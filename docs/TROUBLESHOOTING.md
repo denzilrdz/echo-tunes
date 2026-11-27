@@ -90,6 +90,29 @@ docker compose pull && docker compose up -d
 If the latest release still fails, please [open an issue](https://github.com/denzilrdz/echo-tunes/issues)
 with the `doctor` output.
 
+## The dashboard says it can't reach the server
+
+The web player shows *Can't reach your echo-tunes server* when its requests get no answer at
+all. It keeps what's on screen, turns playing off, and tries again by itself (after 10 s, then
+less often) until the server answers.
+
+- **Away from home:** connect to the network or VPN your server is on. The dashboard port is
+  private on purpose.
+- **At home but still failing:** the browser or phone is probably using its own "secure DNS"
+  or "Private DNS" provider, which skips your network's DNS. If your dashboard's name only
+  resolves to the server's LAN address through your router or local DNS (Pi-hole, AdGuard
+  Home, a split-horizon setup), that provider answers with the public address instead, where
+  the dashboard isn't served. Let that device use your network's DNS:
+  - **Chrome / Edge (desktop and Android):** Settings › Privacy and security › Security › Use
+    secure DNS → *With your current service provider* (or off).
+  - **Android:** Settings › Network › Private DNS → *Automatic* or *Off*.
+  - **iPhone / iPad:** turn off iCloud Private Relay for your home Wi-Fi (Settings › Wi-Fi › ⓘ
+    › Limit IP Address Tracking / Private Relay), and remove DNS profiles or apps that set
+    their own DNS.
+  - Or open the dashboard by the server's IP address to check that this is the cause.
+- **The server may be restarting or down:** check its status page or your monitoring
+  ([MONITORING.md](MONITORING.md)), or `docker compose logs`.
+
 ## Getting help
 
 [Open an issue](https://github.com/denzilrdz/echo-tunes/issues/new/choose) with:

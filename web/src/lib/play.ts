@@ -1,6 +1,7 @@
 // What a play button does and says, depending on where music goes.
 
 import { useNavigate } from "@tanstack/react-router";
+import { useConnection } from "@/store/connection";
 import { BROWSER, browserLabel, echoName, usePlayer } from "@/store/player";
 import type { Item, Track } from "./types";
 
@@ -25,18 +26,21 @@ export const itemToTrack = (item: Item): Track => ({
 export function useTarget() {
   const target = usePlayer((s) => s.target);
   const info = usePlayer((s) => s.info);
+  const offline = useConnection((c) => c.offline);
   const onEcho = target !== BROWSER;
   const echo = info.echos.find((e) => e.id === target);
   const name = onEcho ? echoName(echo ?? { id: target, name: "" }) : browserLabel();
   return {
     onEcho,
     name,
-    actions: info.actions,
+    actions: info.actions && !offline,
     playLabel: onEcho ? "Play next" : "Play",
     playHint: onEcho ? `Play next on ${name}` : `Play on ${name.toLowerCase()}`,
-    disabledReason: info.actions
-      ? undefined
-      : "Set a dashboard password on the server (ECHO_TUNES_DASHBOARD_PASSWORD) to play from here.",
+    disabledReason: offline
+      ? "Can't reach your echo-tunes server right now."
+      : info.actions
+        ? undefined
+        : "Set a dashboard password on the server (ECHO_TUNES_DASHBOARD_PASSWORD) to play from here.",
   };
 }
 
