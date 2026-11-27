@@ -1,0 +1,3 @@
+# The web app's build output (from web/, `npm run build`), committed so the wheel and the Docker
+# image never need Node. Hidden from diffs and language stats; CI checks it matches the source.
+src/echo_tunes/web/dist/** linguist-generated=true -diff

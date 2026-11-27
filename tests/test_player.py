@@ -456,8 +456,40 @@ def test_manifest_and_service_worker_follow_the_settings(skill: Skill, tmp_path:
     png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 32)
     c = client(skill, password=None, app_name="Our <Music>", app_color="#aa3300", app_icon=png)
     m = c.get("/manifest.webmanifest").json()
-    assert m["name"] == "Our <Music>" and m["theme_color"] == "#aa3300"
+    assert m["name"] == "Our <Music>"
+    assert m["theme_color"] == m["background_color"] == "#0B0B0F"  # the colour only tints
     assert m["icons"][0]["src"] == "/app-icon.png"
     assert c.get("/app-icon.png").content.startswith(b"\x89PNG")
     page = c.get("/").text
-    assert "<title>Our &lt;Music&gt;</title>" in page and '"#aa3300" data-theme-color' in page
+    assert "<title>Our &lt;Music&gt;</title>" in page
+    assert '<meta name="application-name" content="Our &lt;Music&gt;"' in page
+    assert '<meta name="echo-tunes-accent" content="#aa3300"' in page
+    assert 'href="/app-icon.png"' in page
+
+
+def test_manifest_and_head_match_the_app_theme(skill: Skill) -> None:
+    """PWA colours: the title bar and splash use the app's background, per colour scheme, not
+    the old blue accent (theme_color was ECHO_TUNES_APP_COLOR, background_color #0d1117)."""
+    c = client(skill, password=None)
+    m = c.get("/manifest.webmanifest").json()
+    assert m["theme_color"] == m["background_color"] == "#0B0B0F"
+    assert m["id"] == "/" and m["start_url"] == "/#/" and m["scope"] == "/"
+    assert m["display"] == "standalone" and m["categories"] == ["music", "entertainment"]
+    assert {s["form_factor"] for s in m["screenshots"]} == {"wide", "narrow"}
+    for s in m["screenshots"]:
+        assert c.get(s["src"]).status_code == 200, s["src"]
+    for icon in m["icons"]:
+        assert c.get(icon["src"]).status_code == 200, icon["src"]
+    assert [s["url"] for s in m["shortcuts"]] == ["/#/search", "/#/devices"]
+    page = c.get("/").text
+    assert (
+        'name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"' in page
+    )
+    assert '<meta name="theme-color" content="#0B0B0F" media="(prefers-color-scheme: dark)"' in page
+    assert (
+        '<meta name="theme-color" content="#FAFAFB" media="(prefers-color-scheme: light)"' in page
+    )
+    assert '<meta name="color-scheme" content="dark light"' in page
+    assert 'name="apple-mobile-web-app-status-bar-style" content="black-translucent"' in page
+    assert '<link rel="manifest" href="/manifest.webmanifest"' in page
+    assert '<meta name="echo-tunes-accent" content=""' in page  # built-in accent by default

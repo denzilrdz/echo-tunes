@@ -93,9 +93,9 @@ class DashboardDeps:
     cut_stream: Callable[[str], int] | None = None  # "skip now": cut a song's open streams
     experimental_skip: bool = False
     location: str = ""
-    # Installable app (PWA): name, colour and an optional icon of your own.
+    # Installable app (PWA): name, accent colour ("" = built-in) and an optional icon.
     app_name: str = "echo-tunes"
-    app_color: str = "#1f6feb"
+    app_color: str = ""
     app_icon: Path | None = None
 
 
@@ -299,25 +299,10 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     policy = csp(deps.public_origin)
     setup_cache: dict[str, Any] = {"at": 0.0, "result": None}
     setup_lock = asyncio.Lock()
-    web = resources.files("echo_tunes") / "web"
-    name = html.escape(deps.app_name)
-    index_html = (
-        (web / "index.html")
-        .read_text(encoding="utf-8")
-        .replace("<title>echo-tunes</title>", f"<title>{name}</title>")
-        .replace("<span>echo-tunes</span>", f"<span>{name}</span>")
-        .replace(
-            'content="#0d1117" data-theme-color', f'content="{deps.app_color}" data-theme-color'
-        )
-    )
+    web = resources.files("echo_tunes") / "web" / "dist"  # built from web/ (npm run build)
+    index_html = page_html((web / "index.html").read_text(encoding="utf-8"), deps)
+    login_html = page_html((web / "login.html").read_text(encoding="utf-8"), deps)
     sw_js = (web / "sw.js").read_text(encoding="utf-8")
-
-    login_html = (
-        (web / "login.html")
-        .read_text(encoding="utf-8")
-        .replace("<title>echo-tunes</title>", f"<title>Sign in · {name}</title>")
-        .replace("<span>echo-tunes</span>", f"<span>{name}</span>")
-    )
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> Response:
@@ -385,46 +370,7 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
 
     @app.get("/manifest.webmanifest")
     async def manifest() -> JSONResponse:
-        if deps.app_icon:
-            icons = [
-                {
-                    "src": "/app-icon.png",
-                    "sizes": "any",
-                    "type": "image/png",
-                    "purpose": "any maskable",
-                }
-            ]
-        else:
-            icons = [
-                {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
-                {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
-                {
-                    "src": "/static/icon-maskable-512.png",
-                    "sizes": "512x512",
-                    "type": "image/png",
-                    "purpose": "maskable",
-                },
-            ]
-        return JSONResponse(
-            {
-                "name": deps.app_name,
-                "short_name": deps.app_name[:12],
-                "description": "YouTube Music in your browser or on your Echo.",
-                "id": "/",
-                "start_url": "/#play",
-                "scope": "/",
-                "display": "standalone",
-                "background_color": "#0d1117",
-                "theme_color": deps.app_color,
-                "icons": icons,
-                "shortcuts": [
-                    {"name": "Player", "url": "/#play"},
-                    {"name": "Now playing", "url": "/#now"},
-                    {"name": "History", "url": "/#history"},
-                ],
-            },
-            media_type="application/manifest+json",
-        )
+        return JSONResponse(manifest_json(deps), media_type="application/manifest+json")
 
     @app.get("/sw.js")
     async def service_worker() -> Response:
@@ -437,7 +383,9 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             return Response(status_code=404)
         return FileResponse(deps.app_icon, media_type="image/png")
 
-    app.mount("/static", StaticFiles(directory=str(web)), name="static")
+    app.mount("/static", StaticFiles(directory=str(web / "static")), name="static")
+    # Hashed build files: their names change with their content, so browsers keep them.
+    app.mount("/assets", _Immutable(directory=str(web / "assets")), name="assets")
 
     @app.get("/api/now")
     async def now() -> dict[str, Any]:
@@ -774,8 +722,106 @@ class BodyLimit:
 def _public(path: str) -> bool:
     """What the login page and an app install need before signing in (no data in any of it)."""
     return path in ("/login", "/api/login", "/manifest.webmanifest", "/sw.js") or (
-        path.startswith("/static/")
+        path.startswith(("/static/", "/assets/"))
     )
+
+
+# --- the web app's pages and install manifest ---------------------------------------------
+APP_BG = {"dark": "#0B0B0F", "light": "#FAFAFB"}  # the pages' background (web/src/styles)
+
+
+def page_html(page: str, deps: DashboardDeps) -> str:
+    """A built page with this server's app name and accent colour filled in (the pages carry
+    placeholders: see web/index.html). The theme colour stays the page background."""
+    name = html.escape(deps.app_name)
+    fills = [
+        ("<title>echo-tunes</title>", f"<title>{name}</title>"),
+        ("<title>Sign in · echo-tunes</title>", f"<title>Sign in · {name}</title>"),
+        (
+            'name="application-name" content="echo-tunes"',
+            f'name="application-name" content="{name}"',
+        ),
+        (
+            'name="apple-mobile-web-app-title" content="echo-tunes"',
+            f'name="apple-mobile-web-app-title" content="{name}"',
+        ),
+        (
+            'name="echo-tunes-accent" content=""',
+            f'name="echo-tunes-accent" content="{deps.app_color}"',
+        ),
+    ]
+    for old, new in fills:
+        page = page.replace(old, new)
+    if deps.app_icon:
+        page = page.replace('href="./static/apple-touch-icon.png"', 'href="/app-icon.png"')
+    return page
+
+
+def manifest_json(deps: DashboardDeps) -> dict[str, Any]:
+    """The install manifest. theme_color and background_color are the app's dark background
+    (title bar, splash screen); ECHO_TUNES_APP_COLOR only changes the accent inside the app."""
+    if deps.app_icon:
+        icons: list[dict[str, str]] = [
+            {"src": "/app-icon.png", "sizes": "any", "type": "image/png", "purpose": "any"},
+            {"src": "/app-icon.png", "sizes": "any", "type": "image/png", "purpose": "maskable"},
+        ]
+    else:
+        icons = [
+            {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {
+                "src": "/static/icon-maskable-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable",
+            },
+            {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"},
+        ]
+    shortcut_icon = [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"}]
+    return {
+        "name": deps.app_name,
+        "short_name": deps.app_name[:12],
+        "description": "YouTube Music in your browser, on your phone and on your Echo.",
+        "id": "/",
+        "start_url": "/#/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "any",
+        "background_color": APP_BG["dark"],
+        "theme_color": APP_BG["dark"],
+        "categories": ["music", "entertainment"],
+        "icons": icons,
+        "screenshots": [
+            {
+                "src": "/static/screenshot-wide.png",
+                "sizes": "1280x800",
+                "type": "image/png",
+                "form_factor": "wide",
+                "label": "The player on a computer",
+            },
+            {
+                "src": "/static/screenshot-narrow.png",
+                "sizes": "750x1334",
+                "type": "image/png",
+                "form_factor": "narrow",
+                "label": "The player on a phone",
+            },
+        ],
+        "shortcuts": [
+            {"name": "Search", "url": "/#/search", "icons": shortcut_icon},
+            {"name": "Devices", "url": "/#/devices", "icons": shortcut_icon},
+        ],
+    }
+
+
+class _Immutable(StaticFiles):
+    """Static files whose names carry a content hash: cache them for a year."""
+
+    async def get_response(self, path: str, scope: Any) -> Response:
+        resp = await super().get_response(path, scope)
+        if resp.status_code == 200:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
 
 
 def _https(request: Request) -> bool:
