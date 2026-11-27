@@ -56,6 +56,70 @@ def test_unsigned_or_forged_requests_are_refused(skill: Skill) -> None:
         assert c.post("/alexa", content=too_big, headers=amazon.headers(too_big)).status_code == 400
 
 
+def test_unsatisfiable_range_reports_the_size(skill: Skill) -> None:
+    from echo_tunes import tokens
+
+    with client(skill, FakeAmazon()) as c:
+        path = f"/stream/{tokens.make(SECRET, 'dQw4w9WgXcQ', 600)}.m4a"
+        r = c.get(path, headers={"Range": f"bytes={len(AUDIO) + 10}-"})
+        assert r.status_code == 416 and r.headers["content-range"] == f"bytes */{len(AUDIO)}"
+
+
+def test_rejections_are_logged_at_most_once_per_reason_in_a_while(caplog) -> None:  # type: ignore[no-untyped-def]
+    """Audit: every rejected request wrote a log line, so a flood could fill the disk."""
+    import logging
+
+    from echo_tunes.app import RateLimitedLog
+
+    now = [0.0]
+    rl = RateLimitedLog(every=10, clock=lambda: now[0])
+    with caplog.at_level(logging.WARNING, logger="echo_tunes.app"):
+        for _ in range(100):
+            rl.warning("signature", "rejected: %s", "bad")
+        rl.warning("timestamp", "rejected: %s", "old")
+        now[0] = 11
+        rl.warning("signature", "rejected: %s", "bad")
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines == [
+        "rejected: bad",
+        "rejected: old",
+        "rejected: bad (and 99 more like it since the last message)",
+    ]
+
+
+async def test_a_body_that_trickles_in_is_cut_off(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import asyncio
+
+    from echo_tunes import app as app_mod
+
+    monkeypatch.setattr(app_mod, "BODY_READ_TIMEOUT", 0.1)
+    services = Services(
+        skill=skill,
+        verifier=AlexaVerifier([SKILL_ID], store=FakeAmazon().store),
+        relay=StreamRelay(OneSource(), cdn()),
+        stream_secret=SECRET,
+    )
+    app = create_app(services=services)
+    app.state.services = services
+    sent: list[dict] = []  # type: ignore[type-arg]
+
+    async def receive() -> dict:  # type: ignore[type-arg]
+        await asyncio.sleep(0.05)  # a byte now and then, forever
+        return {"type": "http.request", "body": b" ", "more_body": True}
+
+    async def send(message: dict) -> None:  # type: ignore[type-arg]
+        sent.append(message)
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST",
+        "scheme": "https", "path": "/alexa", "raw_path": b"/alexa", "query_string": b"",
+        "root_path": "", "headers": [(b"transfer-encoding", b"chunked")],
+        "client": ("1.2.3.4", 1), "server": ("test", 443), "state": {},
+    }  # fmt: skip
+    await asyncio.wait_for(app(scope, receive, send), 2)
+    assert sent[0]["status"] == 400
+
+
 def test_stream_needs_a_valid_token(skill: Skill) -> None:
     with client(skill, FakeAmazon()) as c:
         assert c.get("/stream/dQw4w9WgXcQ.9999999999.AAAAAAAAAAAAAAAAAAAAAA.m4a").status_code == 404

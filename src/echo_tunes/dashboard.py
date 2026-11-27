@@ -3,7 +3,9 @@
 Served on its own port (``ECHO_TUNES_DASHBOARD_PORT``, default 8081), separate from the public
 port that Amazon and the Echo use. Keep this port private: bind it to localhost or your LAN,
 or publish it only inside your LAN or a VPN (WireGuard, Tailscale Serve, ...). An optional password
-(``ECHO_TUNES_DASHBOARD_PASSWORD``, HTTP Basic, user ``admin``) adds a second lock.
+(``ECHO_TUNES_DASHBOARD_PASSWORD``: a sign-in page for browsers, HTTP Basic with user ``admin``
+for scripts) adds a second lock; ``ECHO_TUNES_DASHBOARD_API_TOKEN`` is a bearer token for
+monitors that skips the password checks.
 
 Reading (now playing, history, browsing YouTube Music) works without a password on a private
 network. Anything that changes something (play, queue, skip, clear history) is a POST that
@@ -19,6 +21,7 @@ import hmac
 import html
 import ipaddress
 import re
+import secrets
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -27,10 +30,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic import Field as PydField
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from echo_tunes import __version__
 from echo_tunes.health import memory_mb
@@ -40,6 +45,7 @@ from echo_tunes.music import browse
 from echo_tunes.music.catalog import NotSignedIn, Track
 from echo_tunes.player.state import PlayerState
 from echo_tunes.player.store import StateStore
+from echo_tunes.sessions import Sessions, session_key
 from echo_tunes.tokens import is_video_id
 
 ID_TAIL = 12  # characters of a device ID shown (and used for names)
@@ -58,6 +64,10 @@ def csp(public_origin: str) -> str:
 
 SETUP_CACHE_SECONDS = 60
 SETUP_MIN_INTERVAL = 10
+# Largest request body. The biggest real one is POST /api/play/echo with 200 songs: about
+# 30 KB with typical titles, under 100 KB with every title and artist at their 200-character
+# limit (more with non-Latin scripts). Anything larger is refused before it is read in full.
+MAX_BODY_BYTES = 256 * 1024
 
 
 @dataclass(slots=True)
@@ -68,6 +78,10 @@ class DashboardDeps:
     device_names: dict[str, str] = field(default_factory=dict)
     password: str | None = None
     session_days: int = 180  # 0 = until signed out
+    api_token: str | None = None  # "Authorization: Bearer <token>" for scripts and monitors
+    # Signs session cookies (with the password mixed in); the data folder's session.key.
+    session_secret: bytes = field(default_factory=lambda: secrets.token_bytes(32))
+    sessions_file: Path | None = None  # signed-in sessions (None: kept in memory only)
     public_origin: str = ""
     allowed_hosts: frozenset[str] = frozenset()  # beyond IPs, localhost and the public name
     # Setup page: run the checks, and give the browser a test stream link.
@@ -113,7 +127,13 @@ def host_allowed(host_header: str, extra: frozenset[str]) -> bool:
 
 
 def short_id(device: str) -> str:
+    if device == BROWSER_DEVICE:
+        return BROWSER_ID
     return device[-ID_TAIL:]
+
+
+def device_name(names: dict[str, str], sid: str) -> str:
+    return names.get(sid, "") or (BROWSER_NAME if sid == BROWSER_ID else "")
 
 
 def _now_entry(
@@ -130,7 +150,7 @@ def _now_entry(
     sid = short_id(device)
     return {
         "id": sid,
-        "name": names.get(sid, ""),
+        "name": device_name(names, sid),
         "playing": bool(st.playing and cur and now - updated < STALE_AFTER),
         "position_ms": position,
         "updated": updated,
@@ -175,8 +195,27 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         title="echo-tunes dashboard", version=__version__, docs_url=None, redoc_url=None,
         openapi_url=None,
     )  # fmt: skip
+    app.add_middleware(BodyLimit, limit=MAX_BODY_BYTES)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # FastAPI's default answer echoes the whole input back; say what's wrong briefly.
+        errors = exc.errors()
+        first = errors[0] if errors else {}
+        where = ".".join(str(p) for p in first.get("loc", ()))[:80]
+        what = str(first.get("msg", "invalid"))[:120]
+        return JSONResponse({"detail": f"Invalid request: {where}: {what}"}, status_code=422)
+
     expected = (
         "Basic " + base64.b64encode(f"admin:{deps.password}".encode()).decode()
+        if deps.password
+        else None
+    )
+    token_digest = _digest(deps.api_token) if deps.api_token else None
+    sessions = (
+        Sessions(
+            session_key(deps.session_secret, deps.password), deps.session_days, deps.sessions_file
+        )
         if deps.password
         else None
     )
@@ -185,7 +224,7 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     # a time, about one a second in total, however many are sent at once; when too many are
     # queued the rest are refused at once. Not per address: behind a reverse proxy every
     # client shares one, and one device could lock everyone out. Signed-in browsers (session
-    # cookie) never touch the gate.
+    # cookie) and monitors with the API token never touch the gate.
     gate = asyncio.Lock()
     queued = 0
 
@@ -197,7 +236,8 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         queued += 1
         try:
             async with gate:
-                if hmac.compare_digest(given.encode(), wanted.encode()):
+                # Digests of both: the comparison takes as long whatever the lengths.
+                if hmac.compare_digest(_digest(given), _digest(wanted)):
                     return True
                 await asyncio.sleep(WRONG_PASSWORD_DELAY)
                 return False
@@ -205,9 +245,8 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             queued -= 1
 
     def has_session(request: Request) -> bool:
-        assert deps.password
-        cookie = request.cookies.get(SESSION_COOKIE, "")
-        return session_valid(deps.password, cookie, time.time())
+        assert sessions is not None
+        return sessions.valid(request.cookies.get(SESSION_COOKIE, ""))
 
     def signed_in(request: Request) -> bool:
         """For pages that only need to know (no password is checked here)."""
@@ -232,8 +271,11 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         path = request.url.path
         allowed = not deps.password or _public(path) or has_session(request)
         basic = request.headers.get("authorization", "")
-        if not allowed and basic and expected:
-            ok = await password_ok(basic, expected)  # scripts and monitors (curl -u, Kuma)
+        if not allowed and token_digest and basic[:7].lower() == "bearer ":
+            # Scripts and monitors: a long random token, so no gate and no delay needed.
+            allowed = hmac.compare_digest(_digest(basic[7:].strip()), token_digest)
+        elif not allowed and basic and expected:
+            ok = await password_ok(basic, expected)  # scripts (curl -u)
             if ok is None:
                 return JSONResponse({"detail": "busy, try again"}, status_code=429)
             allowed = ok
@@ -280,8 +322,11 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> Response:
         resp = HTMLResponse(index_html)
-        if deps.password and deps.session_days == 0 and request.cookies.get(SESSION_COOKIE):
-            set_session(resp, request)  # keep a never-expiring session's cookie fresh
+        cookie = request.cookies.get(SESSION_COOKIE, "")
+        if sessions and deps.session_days == 0 and cookie:
+            fresh = sessions.renew(cookie)  # keep a never-expiring session's cookie fresh
+            if fresh:
+                set_cookie(resp, request, fresh)
         return resp
 
     @app.get("/login", response_class=HTMLResponse)
@@ -300,16 +345,15 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         if not ok:
             raise HTTPException(401, "Wrong password.")
         resp = JSONResponse({"status": "ok"})
-        set_session(resp, request)
+        assert sessions is not None
+        set_cookie(resp, request, sessions.create())
         return resp
 
-    def set_session(resp: Response, request: Request) -> None:
-        assert deps.password
+    def set_cookie(resp: Response, request: Request, value: str) -> None:
         days = deps.session_days
-        expires = int(time.time()) + days * 86400 if days else 0  # 0 = never
         resp.set_cookie(
             SESSION_COOKIE,
-            session_value(deps.password, expires),
+            value,
             # Browsers keep a cookie at most ~400 days; with no expiry it's renewed on every
             # visit (see index()), so it never runs out while you use it.
             max_age=(days or COOKIE_MAX_DAYS) * 86400,
@@ -320,8 +364,22 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         )
 
     @app.post("/api/logout")
-    async def logout() -> Response:
+    async def logout(request: Request) -> Response:
+        """Sign this browser out: its session ends on the server too."""
+        if sessions:
+            sessions.revoke(request.cookies.get(SESSION_COOKIE, ""))
         resp = JSONResponse({"status": "ok"})
+        resp.delete_cookie(SESSION_COOKIE, path="/")
+        return resp
+
+    @app.post("/api/logout/all")
+    async def logout_everywhere() -> Response:
+        """Sign every browser and installed app out (scripts with Basic auth or the API
+        token are not affected)."""
+        if sessions is None:
+            raise HTTPException(404, "no password is set")
+        removed = sessions.revoke_all()
+        resp = JSONResponse({"status": "ok", "signed_out": removed})
         resp.delete_cookie(SESSION_COOKIE, path="/")
         return resp
 
@@ -391,19 +449,23 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         players.sort(key=lambda p: (not p["playing"], -p["updated"]))  # playing Echos first
         return {"time": time.time(), "devices": players}
 
+    # History and stats run SQLite queries that can take a while on a big history: off the
+    # event loop, which also serves the Echo's requests (History has its own lock).
     @app.get("/api/history")
     async def history(
         limit: int = Query(50, ge=1, le=500),
-        offset: int = Query(0, ge=0),
+        offset: int = Query(0, ge=0, le=1_000_000),
         device: str | None = Query(None, max_length=64),
         q: str | None = Query(None, max_length=100),
         days: int | None = Query(None, ge=1, le=3650),
     ) -> dict[str, Any]:
         full = _full_id(deps.store, device)
-        rows = deps.history.recent(limit=limit, offset=offset, device=full, query=q, days=days)
+        rows = await asyncio.to_thread(
+            deps.history.recent, limit=limit, offset=offset, device=full, query=q, days=days
+        )
         for row in rows:
             row["device"] = short_id(row["device"])
-            row["device_name"] = deps.device_names.get(row["device"], "")
+            row["device_name"] = device_name(deps.device_names, row["device"])
         return {"enabled": deps.history.enabled, "days": deps.history.days, "plays": rows}
 
     @app.get("/api/stats")
@@ -412,18 +474,24 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         device: str | None = Query(None, max_length=64),
         tz: int | None = Query(None, ge=-840, le=840, description="minutes east of UTC"),
     ) -> dict[str, Any]:
-        return deps.history.stats(days, _full_id(deps.store, device), tz)
+        full = _full_id(deps.store, device)
+        return await asyncio.to_thread(deps.history.stats, days, full, tz)
 
     @app.get("/api/devices")
     async def devices() -> list[dict[str, str]]:
-        return [
-            {"id": short_id(d), "name": deps.device_names.get(short_id(d), "")}
+        """Echos (by the end of their ID), and the web player once it has played something."""
+        out = [
+            {"id": short_id(d), "name": device_name(deps.device_names, short_id(d))}
             for d, _, _ in deps.store.all()
+            if d != BROWSER_DEVICE
         ]
+        if await asyncio.to_thread(deps.history.has_device, BROWSER_DEVICE):
+            out.append({"id": BROWSER_ID, "name": device_name(deps.device_names, BROWSER_ID)})
+        return out
 
     @app.get("/api/health")
     async def health() -> JSONResponse:
-        report = health_report(deps.history, deps.signed_in())
+        report = await asyncio.to_thread(health_report, deps.history, deps.signed_in())
         return JSONResponse(report, status_code=200 if report["status"] == "ok" else 503)
 
     @app.get("/api/setup")
@@ -441,7 +509,18 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         return JSONResponse(setup_cache["result"])
 
     @app.get("/api/test-play")
+    async def test_play_get() -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Use POST /api/test-play (an action: needs the dashboard password)."},
+            status_code=403,
+        )
+
+    @app.post("/api/test-play")
     async def test_play() -> JSONResponse:
+        """A short-lived stream link to a test song (it hands out a working public link, so
+        it's an action like the player's)."""
+        if not deps.password:
+            raise HTTPException(403, NEEDS_PASSWORD)
         if deps.test_play is None:
             return JSONResponse({"error": "not available"}, status_code=404)
         return JSONResponse(deps.test_play())
@@ -456,7 +535,10 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
 
 # --- the player -------------------------------------------------------------------------------
 BROWSER_DEVICE = "dashboard-browser"  # history rows for songs played in a browser
+BROWSER_ID = "browser"  # how the API shows it (and filters by it)
+BROWSER_NAME = "Web player"
 MAX_TRACKS = 200
+NEEDS_PASSWORD = "Set ECHO_TUNES_DASHBOARD_PASSWORD to use the player and other actions."  # noqa: S105 - a message, not a password
 
 
 class _TrackIn(BaseModel):
@@ -503,10 +585,7 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
         """Every state-changing call needs the password to be set (the middleware has checked
         it, and that the request is same-origin JSON: see _write_refused)."""
         if not deps.password:
-            raise HTTPException(
-                403,
-                "Set ECHO_TUNES_DASHBOARD_PASSWORD to use the player and other actions.",
-            )
+            raise HTTPException(403, NEEDS_PASSWORD)
 
     async def youtube(call: Awaitable[Any]) -> Any:
         try:
@@ -527,7 +606,7 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
 
     def full_device(short: str) -> str:
         full = _full_id(deps.store, short)
-        if full is None or full.startswith("\x00"):
+        if full is None or full.startswith("\x00") or full == BROWSER_DEVICE:
             raise HTTPException(404, "unknown Echo")
         return full
 
@@ -635,7 +714,7 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
     @app.post("/api/history/clear")
     async def clear_history(request: Request) -> dict[str, int]:
         action(request)
-        return {"removed": deps.history.clear()}
+        return {"removed": await asyncio.to_thread(deps.history.clear)}
 
 
 # --- signing in -----------------------------------------------------------------------------
@@ -649,20 +728,47 @@ class _LoginIn(BaseModel):
     password: str = PydField(min_length=1, max_length=200)
 
 
-def session_value(password: str, expires: int) -> str:
-    """``<expiry>.<HMAC of it, keyed by the password>`` (expiry 0 = never): no server-side
-    session store, and changing the password signs every device out."""
-    sig = hmac.new(password.encode(), f"session:{expires}".encode(), hashlib.sha256).hexdigest()
-    return f"{expires}.{sig}"
+# Secrets (password, API token, Basic header) are compared through scrypt with a random
+# per-process salt: equal-length outputs make the comparison's timing independent of the
+# secret's length, nothing derived from it outlives the process, and it's a slow hash, as a
+# password deserves. Light parameters (~10 ms, 4 MB); checks run one at a time anyway.
+_COMPARE_SALT = secrets.token_bytes(16)
 
 
-def session_valid(password: str, value: str, now: float) -> bool:
-    expires = value.partition(".")[0]
-    if not expires.isascii() or not expires.isdigit() or len(expires) > 12:
-        return False
-    if expires != "0" and int(expires) < now:
-        return False
-    return hmac.compare_digest(value.encode(), session_value(password, int(expires)).encode())
+def _digest(value: str) -> bytes:
+    return hashlib.scrypt(value.encode(), salt=_COMPARE_SALT, n=2**12, r=8, p=1, dklen=32)
+
+
+class BodyLimit:
+    """Refuses request bodies over ``limit`` bytes: by Content-Length up front, and while
+    reading for chunked requests (which have none). Both ports share one process, so a huge
+    upload here would take the public /alexa down with it."""
+
+    def __init__(self, app: ASGIApp, limit: int) -> None:
+        self.app, self.limit = app, limit
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        declared = dict(scope["headers"]).get(b"content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > self.limit):
+            await JSONResponse({"detail": "request too large"}, status_code=413)(
+                scope, receive, send
+            )
+            return
+        received = 0
+
+        async def limited() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.limit:
+                    raise HTTPException(413, "request too large")
+            return message
+
+        await self.app(scope, limited, send)
 
 
 def _public(path: str) -> bool:
@@ -695,6 +801,8 @@ def _full_id(store: StateStore, short: str | None) -> str | None:
     """The dashboard only shows ID tails; map one back to the stored device ID."""
     if not short:
         return None
+    if short == BROWSER_ID:
+        return BROWSER_DEVICE
     for device, _, _ in store.all():
         if short_id(device) == short:
             return device

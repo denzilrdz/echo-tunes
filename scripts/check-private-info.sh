@@ -2,6 +2,10 @@
 # Fails if a tracked file contains something that identifies a private setup:
 # private/Tailscale IP addresses, *.ts.net hostnames, or real Alexa skill/device IDs.
 # Documentation uses placeholders (music.example.com, amzn1.ask.skill.xxxx...) instead.
+#
+# Also checks the values listed in .private-ids, if you have one: an untracked file (it's in
+# .gitignore), one string per line (# starts a comment), e.g. the ends of your own Echos' device
+# IDs, your tailnet name or your domain. None of them may appear in a tracked file.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -23,6 +27,20 @@ for p in "${patterns[@]}"; do
     found=1
   fi
 done
+if [ -f .private-ids ]; then
+  if git ls-files --error-unmatch .private-ids >/dev/null 2>&1; then
+    echo "::error::.private-ids is tracked by git; remove it from the repository." >&2
+    found=1
+  fi
+  while IFS= read -r value || [ -n "$value" ]; do
+    value="${value%%#*}"                                # drop comments
+    value="$(printf '%s' "$value" | tr -d '[:space:]')"
+    [ -z "$value" ] && continue
+    if git grep -nIiF -e "$value" -- . ':!uv.lock' ':!.private-ids'; then
+      found=1
+    fi
+  done < .private-ids
+fi
 if [ "$found" -ne 0 ]; then
   echo "::error::Private details found above. Replace them with placeholders." >&2
   exit 1

@@ -10,11 +10,39 @@ import os
 import signal
 import sys
 from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
 from echo_tunes import __version__
 from echo_tunes.config import Settings
+
+if TYPE_CHECKING:
+    import uvicorn
+
+# Open connections the public port accepts at once (beyond it: 503). Echos need a few (one
+# request and one or two audio streams each); audio streams are capped lower (StreamSlots).
+PUBLIC_MAX_CONNECTIONS = 64
+DASHBOARD_MAX_CONNECTIONS = 32
+KEEP_ALIVE_SECONDS = 5  # an idle connection is closed after this
+
+
+def public_config(app: Any, settings: Settings) -> uvicorn.Config:
+    import uvicorn
+
+    return uvicorn.Config(
+        app,
+        host=settings.host,
+        port=settings.port,
+        proxy_headers=True,
+        # The access log would print every stream link (a valid 12-hour token).
+        access_log=False,
+        log_level=settings.log_level,
+        timeout_graceful_shutdown=5,
+        server_header=False,
+        limit_concurrency=PUBLIC_MAX_CONNECTIONS,
+        timeout_keep_alive=KEEP_ALIVE_SECONDS,
+    )
 
 
 def _settings() -> Settings:
@@ -57,21 +85,7 @@ def serve() -> None:
 
     async def run() -> None:
         services, closers = build_services(settings)
-        servers = [
-            Server(
-                uvicorn.Config(
-                    create_app(settings, services),
-                    host=settings.host,
-                    port=settings.port,
-                    proxy_headers=True,
-                    # The access log would print every stream link (a valid 12-hour token).
-                    access_log=False,
-                    log_level=settings.log_level,
-                    timeout_graceful_shutdown=5,
-                    server_header=False,
-                )
-            )
-        ]
+        servers = [Server(public_config(create_app(settings, services), settings))]
         if settings.dashboard_port and services.dashboard:
             dash = create_dashboard(services.dashboard)
             servers.append(
@@ -84,6 +98,8 @@ def serve() -> None:
                         log_level=settings.log_level,
                         timeout_graceful_shutdown=5,
                         server_header=False,
+                        limit_concurrency=DASHBOARD_MAX_CONNECTIONS,
+                        timeout_keep_alive=KEEP_ALIVE_SECONDS,
                     )
                 )
             )

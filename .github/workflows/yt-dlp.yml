@@ -5,8 +5,9 @@ name: yt-dlp
 # that updates uv.lock. Merging and tagging a release ships it.
 #
 # Supply-chain care: only versions published at least a day ago are taken (a bad release is
-# usually yanked by then), the new code runs in a job that can't write anything, and the job
-# that can open the pull request never runs it.
+# usually yanked by then), the new code runs in a job that can't write anything, the lock file
+# is uploaded *before* that code runs (so it can't change what the pull request contains), and
+# the job that can open the pull request never runs it.
 on:
   schedule:
     - cron: "17 5 * * *"
@@ -33,6 +34,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: false # brand-new packages run here: share nothing with other runs
       - name: Update the lock file (versions at least a day old)
         id: lock
         run: |
@@ -45,17 +48,18 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "ytdlp=$(uv tree --frozen --package yt-dlp --depth 0 | awk '/^yt-dlp/{print $2; exit}')" >> "$GITHUB_OUTPUT"
           fi
-      - name: Test with the new versions
-        if: steps.lock.outputs.changed == 'true'
-        run: |
-          uv sync --frozen
-          uv run pytest -q
+      # Uploaded before any new code runs: the tests below can't tamper with it.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.lock.outputs.changed == 'true'
         with:
           name: uv-lock
           path: uv.lock
           retention-days: 1
+      - name: Test with the new versions
+        if: steps.lock.outputs.changed == 'true'
+        run: |
+          uv sync --frozen
+          uv run pytest -q
 
   pull-request:
     name: open pull request

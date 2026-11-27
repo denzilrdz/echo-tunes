@@ -5,15 +5,24 @@ services:
     image: cloudflare/cloudflared:2026.11.1@sha256:e613aadbc2d9511785d2e67a86b0c8ac18dd63a3f9af0d06faf04cbfdcb35f2d
     container_name: echo-tunes-cloudflared
     restart: unless-stopped
+    logging: # rotate logs: at most 3 x 10 MB
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN} # from Cloudflare Zero Trust > Networks > Tunnels
     depends_on: [echo-tunes]
 
   echo-tunes:
+    # Our own release, by tag. To pin it exactly, add the digest shown on the release page or by
+    # `docker buildx imagetools inspect ghcr.io/denzilrdz/echo-tunes:0.3.0`:
+    # image: ghcr.io/denzilrdz/echo-tunes:0.3.0@sha256:<digest>
     image: ghcr.io/denzilrdz/echo-tunes:0.3.0
     container_name: echo-tunes
     restart: unless-stopped
+    logging: # rotate logs: at most 3 x 10 MB
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     env_file: .env
     ports:
       - "127.0.0.1:8081:8081" # private dashboard (open via SSH: ssh -L 8081:localhost:8081 …)

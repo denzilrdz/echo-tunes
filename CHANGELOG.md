@@ -6,6 +6,73 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `ECHO_TUNES_DASHBOARD_API_TOKEN`: a bearer token for monitors and scripts (Uptime Kuma,
+  Prometheus, Home Assistant). It skips the password checks, so wrong passwords sent by
+  someone on your network can no longer make monitors or your own sign-in fail with "busy".
+- *Sign out everywhere*: `POST /api/logout/all` ends every signed-in browser's session.
+- Songs played in the web player show as "Web player" in the history and stats, and can be
+  filtered (`device=browser`).
+
+### Changed
+
+- The setup page's test play is an action now: `POST /api/test-play`, which needs the
+  dashboard password like the player (`GET` answers 403).
+- Signing in: everyone signs in to the dashboard once more after updating (new cookies).
+
+### Security
+
+- The dashboard refuses request bodies over 256 KB, and its error messages no longer repeat
+  what was sent. A huge upload could use gigabytes of memory and take the Alexa side down too.
+- Sign-in cookies are signed with a secret kept in the data folder (`session.key`), not the
+  password, so a stolen cookie can't be used to guess the password. Each sign-in gets its own
+  session: *Sign out* really ends it (a copied cookie stops working), and lowering
+  `ECHO_TUNES_DASHBOARD_SESSION_DAYS` shortens sessions already signed in.
+- Password checks take the same time whatever the length of the password tried.
+- `/alexa`: the cheap checks (skill ID, timestamp) run before any certificate download, at
+  most 4 downloads wait at once, and requests with an already known certificate never wait
+  behind them, so fake requests can't slow your Echo down. A request body must arrive within
+  10 s, the public port accepts at most 64 connections at once, and refused requests are
+  logged at most once per reason every 10 s.
+- Stream links accept only the exact signature they were issued with (base64 allowed 16
+  spellings of it).
+- The installed app's offline cache only keeps the dashboard page, the sign-in page and its
+  own files. Opening an API address or `/metrics` as a page could store your history in the
+  browser's cache; the old cache is deleted on the next visit.
+
+### Fixed
+
+- **Player → Echo:** *Next* now plays right after the song the Echo has already lined up;
+  before, it was put in front of that song and skipped when it started.
+- An old *Play* pick from the dashboard no longer takes over a later voice request ("play my
+  liked songs", next, previous, start over). Resuming after a pause plays a pick made while
+  paused, and a picked song that fails is skipped instead of retried.
+- Saying "shuffle" or "loop" early in a song no longer lines up two songs.
+- "Loop off" on the last song carries on with radio instead of stopping.
+- With shuffle on, the radio after a song you asked for is shuffled too.
+- Songs added from the dashboard while shuffle is on keep your original order for when you
+  turn shuffle off.
+- A queued song that fails no longer shows the Echo as stopped while it keeps playing.
+- *Add to queue* on a full queue says how many songs fit instead of claiming all were added.
+- Playlists and mixes answer within Alexa's time limit, with an apology when YouTube Music is
+  slow, instead of failing silently.
+- A lower-case or unsupported `ECHO_TUNES_LOCATION` or `ECHO_TUNES_LANGUAGE` (e.g. `in`,
+  `en-US`) gives a clear configuration message instead of crashing `serve` and `doctor`;
+  `in` is read as `IN`.
+- Audio: a client that reads only a trickle no longer holds a stream for a whole song; a
+  network error while checking a YouTube link logs one line instead of a traceback; a range
+  past the end says how big the file is (`Content-Range: bytes */<size>`).
+- Several songs looked up at once (e.g. a playlist with `ECHO_TUNES_RESOLVER_WORKERS=1`) no
+  longer "time out" while merely waiting their turn, which also restarted the workers.
+- The source package (sdist) now has everything its tests need (8 failed from it).
+- Docs: `.env.example` lists every setting; the dashboard docs list every API endpoint and no
+  longer mention the old password pop-up; the setup guide shows current `doctor` output.
+- The compose files rotate container logs (3 × 10 MB) and explain how to pin the image by
+  digest.
+- Dashboard: history and stats no longer hold up the Echo's requests while they run on a big
+  history, and a huge `offset` gives a clear error instead of a server error.
+
 ## [0.3.0] - 2026-11-26
 
 A web player, and the dashboard becomes an app you can install on your phone.

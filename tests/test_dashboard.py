@@ -136,7 +136,16 @@ async def test_setup_checks_and_test_play(skill: Skill) -> None:
     c.get("/api/setup")
     c.get("/api/setup", params={"refresh": 1})  # within 10 s: still cached
     assert len(calls) == 1, "checks must not hammer YouTube"
-    url = c.get("/api/test-play").json()["url"]
+    assert c.get("/api/test-play").status_code == 403  # an action now: POST, with password
+    assert c.post("/api/test-play", json={}).status_code == 403  # no password set
+    c = TestClient(
+        base_url="http://localhost:8081",
+        app=create_dashboard(
+            deps(skill, test_play=play, password="pw", public_origin="https://music.example.com")
+        ),
+        headers={"Authorization": "Basic " + base64.b64encode(b"admin:pw").decode()},
+    )
+    url = c.post("/api/test-play", json={}).json()["url"]
     assert url.startswith("https://music.example.com/stream/dQw4w9WgXcQ.")
     assert (
         "media-src 'self' https://music.example.com"
@@ -174,7 +183,7 @@ def test_dns_rebinding_and_cross_site_reads_are_refused(skill: Skill) -> None:
 
 
 def test_sign_in_once_with_a_long_lived_cookie(skill: Skill) -> None:
-    from echo_tunes.dashboard import SESSION_COOKIE, session_valid, session_value
+    from echo_tunes.dashboard import SESSION_COOKIE
 
     skill.history = History(":memory:", 15)
     app = create_dashboard(deps(skill, password="s3cret"))
@@ -198,15 +207,174 @@ def test_sign_in_once_with_a_long_lived_cookie(skill: Skill) -> None:
 
     c.post("/api/logout", json={})
     assert c.get("/api/now").status_code == 401
-
-    # Sessions expire, and changing the password signs everyone out.
-    v = session_value("s3cret", 2_000_000_000)
-    assert session_valid("s3cret", v, 1_900_000_000)
-    assert not session_valid("s3cret", v, 2_000_000_001)
-    assert not session_valid("changed", v, 1_900_000_000)
-    assert not session_valid("s3cret", "9999999999.forged", 0)
-    assert not session_valid("s3cret", "", 0)
     assert SESSION_COOKIE
+
+
+def _login(app: object, password: str = "s3cret") -> tuple[TestClient, str]:  # noqa: S107
+    from echo_tunes.dashboard import SESSION_COOKIE
+
+    c = TestClient(app, base_url="http://localhost:8081")  # type: ignore[arg-type]
+    r = c.post("/api/login", json={"password": password})
+    assert r.status_code == 200
+    return c, r.cookies[SESSION_COOKIE]
+
+
+def test_sign_out_ends_the_session_even_for_a_copied_cookie(skill: Skill) -> None:
+    """Audit: signing out only deleted the browser's cookie; a copy kept working."""
+    from echo_tunes.dashboard import SESSION_COOKIE
+
+    skill.history = History(":memory:", 15)
+    app = create_dashboard(deps(skill, password="s3cret"))
+    c, cookie = _login(app)
+    other, cookie2 = _login(app)
+    assert cookie != cookie2
+    thief = TestClient(app, base_url="http://localhost:8081", cookies={SESSION_COOKIE: cookie})
+    assert thief.get("/api/now").status_code == 200
+    c.post("/api/logout", json={})
+    assert thief.get("/api/now").status_code == 401
+    assert other.get("/api/now").status_code == 200  # other devices stay signed in
+
+    # "Sign out everywhere" ends every session.
+    third, _ = _login(app)
+    r = third.post("/api/logout/all", json={})
+    assert r.status_code == 200 and r.json()["signed_out"] == 2
+    assert other.get("/api/now").status_code == 401 and third.get("/api/now").status_code == 401
+
+
+def test_session_cookies_are_unique_and_follow_the_current_settings() -> None:
+    """Audit: SESSION_DAYS=0 gave everyone the same never-expiring cookie, and lowering
+    SESSION_DAYS didn't shorten cookies already handed out."""
+    from echo_tunes.sessions import Sessions
+
+    now = [1_000_000.0]
+    s = Sessions(b"k" * 32, days=0, clock=lambda: now[0])
+    a, b = s.create(), s.create()
+    assert a != b and s.valid(a) and s.valid(b)
+    now[0] += 3650 * 86400
+    assert s.valid(a)  # 0 = until signed out
+    s.days = 30  # lowered (a restart with a new setting)
+    assert not s.valid(a)
+    fresh = s.create()
+    assert s.valid(fresh)
+    now[0] += 31 * 86400
+    assert not s.valid(fresh)
+    flipped = ("0" if fresh[-1] != "0" else "1").join((fresh[:-1], ""))
+    for bad in ("", "0.abc", fresh + "x", flipped):
+        assert not s.valid(bad)
+
+
+def test_a_stolen_cookie_says_nothing_about_the_password() -> None:
+    """Audit: the cookie was an HMAC keyed by the password, so it could be brute-forced
+    offline. It is now keyed by a server secret (with the password mixed in)."""
+    import hashlib
+    import hmac
+
+    from echo_tunes.sessions import Sessions, session_key
+
+    secret = b"s" * 32
+    cookie = Sessions(session_key(secret, "s3cret"), 180).create()
+    sid, issued, mac = cookie.split(".")
+    guess = hmac.new(b"s3cret", f"{sid}.{issued}".encode(), hashlib.sha256).hexdigest()
+    assert mac != guess
+    assert session_key(secret, "s3cret") != session_key(secret, "changed")
+    assert session_key(secret, "s3cret") != session_key(b"t" * 32, "s3cret")
+
+
+def test_sessions_survive_a_restart_and_stay_bounded(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import os
+    import stat
+
+    from echo_tunes.sessions import Sessions
+
+    path = tmp_path / "sessions.json"
+    s = Sessions(b"k" * 32, 180, path, max_sessions=3)
+    cookies = [s.create() for _ in range(5)]
+    assert len(s) == 3
+    reloaded = Sessions(b"k" * 32, 180, path, max_sessions=3)
+    assert reloaded.valid(cookies[-1]) and not reloaded.valid(cookies[0])
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    path.write_text("{not json")
+    assert len(Sessions(b"k" * 32, 180, path)) == 0  # damaged: everyone signs in again
+
+
+def test_api_token_skips_the_password_queue(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Audit: ~20 wrong passwords in flight made monitors' Basic-auth scrapes get 429."""
+    import asyncio
+
+    import httpx
+
+    from echo_tunes import dashboard
+
+    monkeypatch.setattr(dashboard, "WRONG_PASSWORD_DELAY", 0.2)
+    monkeypatch.setattr(dashboard, "MAX_QUEUED_CHECKS", 2)
+    skill.history = History(":memory:", 15)
+    token = "t" * 40
+    app = create_dashboard(deps(skill, password="s3cret", api_token=token))
+
+    async def run() -> None:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://localhost:8081") as c:
+            bad = base64.b64encode(b"admin:nope").decode()
+            flood = [
+                asyncio.create_task(c.get("/metrics", headers={"Authorization": f"Basic {bad}"}))
+                for _ in range(6)
+            ]
+            await asyncio.sleep(0.05)
+            t0 = time.monotonic()
+            ok = await c.get("/metrics", headers={"Authorization": f"Bearer {token}"})
+            assert ok.status_code == 200 and time.monotonic() - t0 < 0.15
+            wrong = await c.get("/metrics", headers={"Authorization": "Bearer " + "x" * 40})
+            assert wrong.status_code == 401
+            await asyncio.gather(*flood)
+
+    asyncio.run(run())
+
+
+def test_api_token_must_be_long(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import pytest
+    from pydantic import ValidationError
+
+    from echo_tunes.config import Settings
+
+    monkeypatch.setenv("ECHO_TUNES_PUBLIC_URL", "https://music.example.com")
+    monkeypatch.setenv("ECHO_TUNES_SKILL_IDS", "amzn1.ask.skill.x")
+    monkeypatch.setenv("ECHO_TUNES_DASHBOARD_API_TOKEN", "short")
+    with pytest.raises(ValidationError, match="at least 32"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+    monkeypatch.setenv("ECHO_TUNES_DASHBOARD_API_TOKEN", "a" * 64)
+    assert Settings(_env_file=None).dashboard_api_token is not None  # type: ignore[call-arg]
+
+
+def test_huge_bodies_are_refused_before_they_are_read(skill: Skill) -> None:
+    """Audit: a 400 MB POST /api/login grew the process to 1.9 GB, and the 422 echoed it back."""
+    skill.history = History(":memory:", 15)
+    c = TestClient(
+        create_dashboard(deps(skill, password="s3cret")), base_url="http://localhost:8081"
+    )
+    big = b'{"password": "' + b"x" * (300 * 1024) + b'"}'
+    hdrs = {"Content-Type": "application/json"}
+    assert c.post("/api/login", content=big, headers=hdrs).status_code == 413
+
+    def chunked():  # type: ignore[no-untyped-def]
+        yield b'{"password": "'
+        for _ in range(40):
+            yield b"x" * 10_000
+        yield b'"}'
+
+    r = c.post("/api/login", content=chunked(), headers=hdrs)
+    assert r.status_code == 413
+    # Validation errors are short and never repeat the input.
+    long = '{"password": "' + "y" * 5000 + '"}'
+    r = c.post("/api/login", content=long, headers=hdrs)
+    assert r.status_code == 422 and len(r.content) < 300 and "yyyy" not in r.text
+
+
+def test_history_offset_is_bounded(skill: Skill) -> None:
+    skill.history = History(":memory:", 15)
+    c = TestClient(create_dashboard(deps(skill)), base_url="http://localhost:8081")
+    assert c.get("/api/history", params={"offset": 10**30}).status_code == 422
+    assert c.get("/api/history", params={"offset": 1000}).status_code == 200
 
 
 def test_wrong_passwords_are_slowed_down_but_never_lock_out(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -214,34 +382,61 @@ def test_wrong_passwords_are_slowed_down_but_never_lock_out(skill: Skill, monkey
     everyone out, and wrong Basic-auth passwords weren't limited at all."""
     from echo_tunes import dashboard
 
-    monkeypatch.setattr(dashboard, "WRONG_PASSWORD_DELAY", 0.05)
+    delay = 0.2
+    monkeypatch.setattr(dashboard, "WRONG_PASSWORD_DELAY", delay)
     skill.history = History(":memory:", 15)
     c = TestClient(
         create_dashboard(deps(skill, password="s3cret")), base_url="http://localhost:8081"
     )
     bad = base64.b64encode(b"admin:nope").decode()
     t0 = time.monotonic()
-    for _ in range(4):
+    for _ in range(2):
         assert c.post("/api/login", json={"password": "x"}).status_code == 401
         assert c.get("/api/now", headers={"Authorization": f"Basic {bad}"}).status_code == 401
-    assert time.monotonic() - t0 >= 8 * 0.05  # every wrong try waited
+    assert time.monotonic() - t0 >= 4 * delay  # every wrong try waited
     t0 = time.monotonic()
     assert c.post("/api/login", json={"password": "s3cret"}).status_code == 200  # never locked out
-    assert time.monotonic() - t0 < 0.05
+    assert time.monotonic() - t0 < delay / 2  # a right one doesn't wait
 
 
 def test_a_session_can_last_until_signed_out(skill: Skill) -> None:
-    from echo_tunes.dashboard import session_valid, session_value
-
     skill.history = History(":memory:", 15)
     app = create_dashboard(deps(skill, password="s3cret", session_days=0))
     c = TestClient(app, base_url="http://localhost:8081")
     first = c.post("/api/login", json={"password": "s3cret"}).headers["set-cookie"]
-    assert "echo_tunes_session=0." in first and f"Max-Age={400 * 86400}" in first
-    again = c.get("/")  # every visit renews the browser's cookie
-    assert again.status_code == 200 and "echo_tunes_session=0." in again.headers["set-cookie"]
-    assert session_valid("s3cret", session_value("s3cret", 0), 4_000_000_000)
-    assert not session_valid("other", session_value("s3cret", 0), 0)
+    assert f"Max-Age={400 * 86400}" in first
+    value = first.split(";")[0]
+    import time as _time
+
+    _time.sleep(1.1)  # the renewed cookie carries a new issue time
+    renewed = c.get("/")  # every visit renews the browser's cookie (same session)
+    fresh = renewed.headers["set-cookie"].split(";")[0]
+    assert (
+        renewed.status_code == 200
+        and fresh != value
+        and f"Max-Age={400 * 86400}" in renewed.headers["set-cookie"]
+    )
+    assert c.get("/api/now").status_code == 200  # the new cookie works...
+    old = TestClient(
+        app, base_url="http://localhost:8081", cookies={value.split("=")[0]: value.split("=", 1)[1]}
+    )
+    assert old.get("/api/now").status_code == 401  # ...and the old one was retired
+    assert c.post("/api/logout", json={}).status_code == 200
+    assert c.get("/api/now").status_code == 401  # signing out ends the renewed session too
+
+
+def test_renewing_the_same_cookie_twice_does_not_fork_the_session() -> None:
+    """Security review: two renewals of one cookie must not leave two live sessions."""
+    from echo_tunes.sessions import Sessions
+
+    now = [1_000_000.0]
+    s = Sessions(b"k" * 32, 0, clock=lambda: now[0])
+    first = s.create()
+    now[0] += 5
+    a = s.renew(first)
+    b = s.renew(first)  # a second page load racing with the same old cookie
+    assert a is not None and b is None
+    assert s.revoke(a) and not s.valid(a)
 
 
 async def test_parallel_guesses_still_take_turns(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]

@@ -46,8 +46,8 @@ and your phone's lock screen control it. Songs played here appear in the history
 
 | Button | On an Echo |
 | --- | --- |
-| **▶ Play** | Plays after the current song. If the Echo had already lined up its next song, it switches as soon as that one starts. |
-| **Next** | Right after the current song. |
+| **▶ Play** | Plays after the current song. If the Echo had already lined up its next song, it switches as soon as that one starts. If the Echo is paused, saying "resume" plays it. A newer voice request wins over it. |
+| **Next** | After whatever the Echo plays next: right after the current song, or after the song the Echo has already lined up. |
 | **+** (Add to queue) | At the end of the queue. |
 | **Radio** | A radio of similar songs, after the current song. |
 
@@ -60,16 +60,23 @@ works while the Echo is still downloading the song (Echos often fetch a whole so
 it may do nothing; it's off by default.
 
 **Actions need a password.** Browsing works on any private network, but anything that changes
-something (play, queue, skip, clear history) only works when `ECHO_TUNES_DASHBOARD_PASSWORD`
-is set. It's then a JSON request from the dashboard's own page (other websites can't trigger
+something (play, queue, skip, the setup page's test play, clear history) only works when
+`ECHO_TUNES_DASHBOARD_PASSWORD` is set. It's then a JSON request from the dashboard's own page (other websites can't trigger
 it).
 
 **Sign in once per device.** With a password set, the dashboard shows a sign-in page; after
-that the phone, browser or installed app stays signed in for 180 days, or for good with
-`ECHO_TUNES_DASHBOARD_SESSION_DAYS=0` (a session cookie; wrong
-passwords are answered one at a time, a second each, so guessing is slow). Changing the password signs every device
-out; *Sign out* is at the bottom of the page. Scripts and monitors use the same password as
-HTTP Basic auth (`curl -u admin:PASSWORD`, Uptime Kuma's *Authentication → HTTP Basic*); see
+that the phone, browser or installed app stays signed in for 180 days, or until you sign out
+with `ECHO_TUNES_DASHBOARD_SESSION_DAYS=0`. Wrong passwords are answered one at a time, a
+second each, so guessing is slow. *Sign out* ends that device's session on the server too (a
+copied cookie stops working); `POST /api/logout/all` signs every device out, and so does
+changing the password. Lowering `ECHO_TUNES_DASHBOARD_SESSION_DAYS` also shortens sessions
+already signed in. Sessions are kept in `sessions.json` (at most 100) and signed with
+`session.key`, both in the data folder.
+
+**Scripts and monitors** use `ECHO_TUNES_DASHBOARD_API_TOKEN` (recommended: a long random
+value, e.g. `openssl rand -hex 32`, sent as `Authorization: Bearer <token>`). It skips the
+password checks, so a flood of wrong passwords on your network can't make your monitors fail.
+HTTP Basic auth with the password (`curl -u admin:PASSWORD`) still works. See
 [MONITORING.md](MONITORING.md).
 
 ## Install it as an app
@@ -110,8 +117,8 @@ private as long as you don't publish 8081 to the internet yourself.
 > [!WARNING]
 > Never route port 8081 through Funnel, a Cloudflare public hostname or a public reverse proxy
 > without a password: it shows what you listen to. If you need it on a shared network, set
-> `ECHO_TUNES_DASHBOARD_PASSWORD` (the browser then asks for user `admin` and that password;
-> it applies to `/metrics` and the JSON API too).
+> `ECHO_TUNES_DASHBOARD_PASSWORD` (browsers then get a sign-in page; it applies to `/metrics`
+> and the JSON API too).
 
 ## Settings
 
@@ -122,15 +129,16 @@ private as long as you don't publish 8081 to the internet yourself.
 | `ECHO_TUNES_DASHBOARD_HOSTS` | (none) | Extra host names you open it by, comma-separated (e.g. `music-dash.lan`). IP addresses, `localhost` and your public URL's name always work; other names are refused. |
 | `ECHO_TUNES_DASHBOARD_PASSWORD` | (none) | Password: sign-in page for browsers, HTTP Basic (user `admin`) for scripts. Needed for the player's actions. |
 | `ECHO_TUNES_DASHBOARD_SESSION_DAYS` | `180` | How long a device stays signed in. `0` = until you sign out or change the password. |
+| `ECHO_TUNES_DASHBOARD_API_TOKEN` | (none) | Bearer token for monitors and scripts (at least 32 characters). Skips the password checks. |
 | `ECHO_TUNES_HISTORY_DAYS` | `15` | Days of play history to keep. `0` keeps none (and deletes what's there). |
-| `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `BEWY4D23ORJQ=Living room,A6TA55XMCKTY=Kitchen`. |
+| `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `LIVINGROOM01=Living room,K1TCHEN0ECHO=Kitchen`. |
 | `ECHO_TUNES_EXPERIMENTAL_SKIP` | `false` | Let the player try to skip the song playing on an Echo (see [Player](#player)). |
 
 ### Naming your Echos
 
 Alexa only tells a skill a long, random device ID. The dashboard shows its last 12 characters
-(for example *Echo …4D23ORJQ*). Copy that from the Now playing tab or the History Echo filter and
-set `ECHO_TUNES_DEVICE_NAMES=BEWY4D23ORJQ=Living room`, then restart.
+(for example *Echo …NGROOM01*). Copy that from the Now playing tab or the History Echo filter and
+set `ECHO_TUNES_DEVICE_NAMES=LIVINGROOM01=Living room`, then restart.
 
 ## History and privacy
 
@@ -145,19 +153,33 @@ set `ECHO_TUNES_DEVICE_NAMES=BEWY4D23ORJQ=Living room`, then restart.
 ## JSON API
 
 Everything the page shows comes from JSON endpoints on the same port, handy for scripts and
-home automation:
+home automation. With a password set, send the API token (`Authorization: Bearer …`) or Basic
+auth. POSTs must be JSON (`Content-Type: application/json`, at most 256 KB); those marked
+*action* also need the password to be set.
 
 | Endpoint | Returns |
 | --- | --- |
 | `GET /api/now` | Each Echo: current song, position, playing/paused, source, next 10 songs |
-| `GET /api/history?days=7&device=…&q=…&limit=50&offset=0` | Plays, newest first |
-| `GET /api/stats?days=7&device=…` | Totals, plays per day, top songs and artists |
-| `GET /api/devices` | Known Echos (ID tail and name) |
+| `GET /api/history?days=7&device=…&q=…&limit=50&offset=0` | Plays, newest first (`device=browser` for the web player) |
+| `GET /api/stats?days=7&device=…&tz=…` | Totals, plays per day, top songs and artists (`tz`: minutes east of UTC) |
+| `GET /api/devices` | Known Echos (ID tail and name), and `browser` ("Web player") once it has played something |
 | `GET /api/health` | Health summary (see [MONITORING.md](MONITORING.md)) |
-| `GET /api/setup` | The setup checklist (cached for a minute) |
+| `GET /api/setup?refresh=1` | The setup checklist (cached for a minute) |
 | `GET /metrics` | Prometheus metrics |
+| `GET /api/player` | Echos the player can send to, and whether actions are allowed |
 | `GET /api/search?q=…&kind=song\|album\|artist\|playlist` | YouTube Music search |
 | `GET /api/browse/home`, `/api/browse/explore`, `/api/browse/library` | Home rows, charts and moods, your playlists |
+| `GET /api/browse/mood?params=…` | Playlists of a mood or genre |
 | `GET /api/browse/tracks?kind=…&id=…` | The songs of a playlist, album, artist, or a song's radio |
-| `POST /api/play/echo` `{"device", "mode": "now\|next\|queue", "tracks": [...]}` | Queue songs on an Echo (password) |
-| `POST /api/history/clear` `{}` | Delete the history (password) |
+| `POST /api/play/echo` `{"device", "mode": "now\|next\|queue", "tracks": [...]}` | Queue songs on an Echo (action) |
+| `POST /api/play/skip` `{"device"}` | Experimental skip on an Echo (action) |
+| `POST /api/play/stream-link` `{"video_id"}` | A signed link to play a song in this browser (action) |
+| `POST /api/play/played` `{"track", "source"}` | Record a song played in the browser in the history (action) |
+| `POST /api/test-play` `{}` | A 10-minute link to a test song, for the setup page (action) |
+| `POST /api/history/clear` `{}` | Delete the history (action) |
+| `POST /api/login` `{"password"}` | Sign in (sets the session cookie) |
+| `POST /api/logout` `{}` | Sign this browser out |
+| `POST /api/logout/all` `{}` | Sign every browser out |
+
+Pages and files: `/` (the dashboard), `/login`, `/manifest.webmanifest`, `/sw.js`,
+`/app-icon.png` (with `ECHO_TUNES_APP_ICON`) and `/static/…`.

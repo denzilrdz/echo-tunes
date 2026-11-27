@@ -15,6 +15,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from ytmusicapi.constants import SUPPORTED_LANGUAGES, SUPPORTED_LOCATIONS
+
+MIN_TOKEN_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -64,6 +67,11 @@ class Settings(BaseSettings):
     dashboard_password: SecretStr | None = Field(
         default=None, description="Optional password for the dashboard and /metrics (user: admin)."
     )
+    # For scripts and monitors (Uptime Kuma, Prometheus): sent as "Authorization: Bearer
+    # <token>", it skips the password checks (and their queue) entirely. Long and random.
+    dashboard_api_token: SecretStr | None = Field(
+        default=None, description="Optional bearer token for the dashboard API and /metrics."
+    )
     history_days: int = Field(default=15, ge=0, le=3650, description="0 = don't keep history.")
     # How long a phone or browser stays signed in to the dashboard; 0 = until you sign out
     # (or change the password). Fine on a private network.
@@ -111,6 +119,51 @@ class Settings(BaseSettings):
                 raise ValueError(f"{v} is not a PNG image")
         if v.stat().st_size > 2_000_000:
             raise ValueError(f"{v} is over 2 MB")
+        return v
+
+    @field_validator("location", mode="before")
+    @classmethod
+    def _country(cls, v: object) -> object:
+        """Two letters, any case (``in`` → ``IN``); must be a country YouTube Music serves."""
+        if not isinstance(v, str):
+            return v
+        code = v.strip().upper()
+        if code and code not in SUPPORTED_LOCATIONS:
+            raise ValueError(
+                f"{v.strip()!r} isn't a country YouTube Music supports; use a two-letter code"
+                " such as US, GB, IN or DE, or leave it empty"
+            )
+        return code
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def _language(cls, v: object) -> object:
+        """A language YouTube Music shows names in: ``en``, ``de``, ``zh_CN``, ..."""
+        if not isinstance(v, str):
+            return v
+        text = v.strip() or "en"
+        by_lower = {lang.lower(): lang for lang in SUPPORTED_LANGUAGES}
+        found = by_lower.get(text.lower().replace("-", "_"))
+        if found:
+            return found
+        base = re.split(r"[-_]", text)[0].lower()
+        hint = f" (try {by_lower[base]!r})" if base in by_lower else ""
+        raise ValueError(
+            f"{text!r} isn't a language YouTube Music supports{hint}; use one of "
+            + ", ".join(sorted(SUPPORTED_LANGUAGES))
+        )
+
+    @field_validator("dashboard_api_token")
+    @classmethod
+    def _long_token(cls, v: SecretStr | None) -> SecretStr | None:
+        if v is None or not v.get_secret_value():
+            return None
+        token = v.get_secret_value()
+        if len(token) < MIN_TOKEN_LENGTH or not re.fullmatch(r"[A-Za-z0-9._~+/=-]+", token):
+            raise ValueError(
+                f"use at least {MIN_TOKEN_LENGTH} random characters (letters, digits, - _ . ~),"
+                " e.g. the output of: openssl rand -hex 32"
+            )
         return v
 
     @field_validator("skill_ids", mode="before")
@@ -194,7 +247,15 @@ class Settings(BaseSettings):
     @cached_property
     def stream_secret(self) -> bytes:
         """Key that signs stream links. Created on first start and kept in the data folder."""
-        path = self.data_dir / "stream.key"
+        return self._key_file("stream.key", "links already handed to an Echo stop working")
+
+    @cached_property
+    def session_secret(self) -> bytes:
+        """Key that signs dashboard sign-in cookies (with the password mixed in)."""
+        return self._key_file("session.key", "everyone has to sign in to the dashboard again")
+
+    def _key_file(self, name: str, consequence: str) -> bytes:
+        path = self.data_dir / name
         if not path.exists():
             self.data_dir.mkdir(parents=True, exist_ok=True)
             # Written to a temporary file and renamed, so a crash can never leave a short key.
@@ -209,6 +270,6 @@ class Settings(BaseSettings):
         if len(key) != 32:
             raise ValueError(
                 f"{path} is damaged ({len(key)} bytes, expected 32). Delete it and restart: "
-                "a new key is created (links already handed to an Echo stop working)."
+                f"a new key is created ({consequence})."
             )
         return key

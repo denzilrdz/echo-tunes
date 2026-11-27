@@ -45,6 +45,18 @@ class Queue(RuleBasedStateMachine):
         assert self.s.current == current
         assert sorted(t.video_id for t in self.s.tracks) == ids
 
+    @rule(tracks=songs, at_end=st.booleans(), after_enqueued=st.booleans())
+    def insert(self, tracks: list, at_end: bool, after_enqueued: bool) -> None:  # type: ignore[type-arg]
+        current = self.s.current
+        placed = self.s.insert(tracks, at_end=at_end, max_len=MAX, after_enqueued=after_enqueued)
+        assert self.s.current == current  # the playing song stays the playing song
+        assert 0 <= placed <= len(tracks)
+
+    @rule()
+    def enqueue_next(self) -> None:
+        nxt = self.s.next_index()
+        self.s.enqueued = self.s.tracks[nxt].video_id if nxt is not None else ""
+
     @rule(on=st.booleans())
     def loop(self, on: bool) -> None:
         self.s.loop = on
@@ -82,6 +94,8 @@ class Queue(RuleBasedStateMachine):
                 assert i is None
         if not s.shuffle:
             assert not s.unshuffled, "the saved order is only kept while shuffle is on"
+        else:
+            assert sorted(s.unshuffled) == sorted(ids), "the saved order has every queued song"
         n = s.next_index()
         assert n is None or 0 <= n < len(ids)
 

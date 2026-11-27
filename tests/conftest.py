@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -106,7 +107,7 @@ class FakeResolver:
 
 
 @pytest.fixture
-def skill() -> Skill:
+def skill() -> Iterator[Skill]:
     cfg = SkillConfig(
         base_url="https://music.example.com",
         stream_secret=SECRET,
@@ -114,7 +115,11 @@ def skill() -> Skill:
         radio_length=10,
         max_queue=50,
     )
-    return Skill(cfg, FakeCatalog(), FakeResolver(), StateStore(":memory:"))
+    s = Skill(cfg, FakeCatalog(), FakeResolver(), StateStore(":memory:"))
+    yield s
+    s.store.close()  # and whatever History a test gave it
+    if s.history is not None:
+        s.history.close()
 
 
 def envelope(

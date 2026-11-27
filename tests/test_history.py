@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
+
+import pytest
 
 from echo_tunes.history import History
 
@@ -17,9 +20,21 @@ class Clock:
         return self.t
 
 
+_made: list[History] = []
+
+
+@pytest.fixture(autouse=True)
+def _close_histories() -> Iterator[None]:
+    yield
+    while _made:
+        _made.pop().close()
+
+
 def make(days: int = 15) -> tuple[History, Clock]:
     clock = Clock()
-    return History(":memory:", days, clock=clock), clock
+    h = History(":memory:", days, clock=clock)
+    _made.append(h)
+    return h, clock
 
 
 def test_records_a_play_and_its_end() -> None:
@@ -93,7 +108,9 @@ def test_persists_on_disk(tmp_path: Path) -> None:
     h = History(tmp_path / "h.sqlite3", 15)
     h.started("echo-1", song(1), "x")
     h.close()
-    assert History(tmp_path / "h.sqlite3", 15).count() == 1
+    again = History(tmp_path / "h.sqlite3", 15)
+    assert again.count() == 1
+    again.close()
 
 
 def test_pause_and_resume_is_one_play() -> None:

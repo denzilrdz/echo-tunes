@@ -200,6 +200,14 @@ async def test_play_in_browser_and_history(skill: Skill) -> None:
     assert c.post("/api/play/played", json={"track": TRACK}).status_code == 200
     plays = c.get("/api/history").json()["plays"]
     assert plays[0]["title"] == "Picked"
+    # Audit: browser plays showed as "Echo ...rowser" and couldn't be filtered.
+    assert plays[0]["device"] == "browser" and plays[0]["device_name"] == "Web player"
+    assert {"id": "browser", "name": "Web player"} in c.get("/api/devices").json()
+    mine = c.get("/api/history", params={"device": "browser"}).json()["plays"]
+    assert [p["title"] for p in mine] == ["Picked"]
+    assert c.get("/api/stats", params={"device": "browser"}).json()["plays"] == 1
+    bad = c.post("/api/play/echo", json={"device": "browser", "mode": "now", "tracks": [TRACK]})
+    assert bad.status_code == 404
     assert c.post("/api/history/clear", json={}).json() == {"removed": 1}
     assert c.get("/api/history").json()["plays"] == []
 
@@ -237,6 +245,156 @@ async def test_queue_next_and_at_the_end(skill: Skill) -> None:
     assert unknown.status_code == 404
     bad_track = {**TRACK, "video_id": "../../etc/x"}
     bad = c.post("/api/play/echo", json={"device": SHORT, "mode": "next", "tracks": [bad_track]})
+    assert bad.status_code == 422
+
+
+def title(d: dict[str, Any]) -> str:
+    return str(d["audioItem"]["metadata"]["title"])
+
+
+def tok(d: dict[str, Any]) -> str:
+    return str(d["audioItem"]["stream"]["token"])
+
+
+async def test_play_next_after_the_echo_lined_up_a_song_still_plays(skill: Skill) -> None:
+    """Audit: "Play next" went before the song the Echo had already queued; when that song
+    started, the pick was behind the current position and never played."""
+    c = client(skill)
+    first = await start(skill)
+    nearly = await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", first))
+    [enq_b] = directives(nearly)
+    assert enq_b["playBehavior"] == "ENQUEUE"
+    r = c.post("/api/play/echo", json={"device": SHORT, "mode": "next", "tracks": [TRACK]})
+    assert r.status_code == 200 and r.json()["placed"] == 1
+    await skill.handle(event("AudioPlayer.PlaybackFinished", first))
+    started_b = await skill.handle(event("AudioPlayer.PlaybackStarted", tok(enq_b)))
+    assert not directives(started_b)
+    nearly_b = await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", tok(enq_b)))
+    [enq_x] = directives(nearly_b)
+    assert enq_x["playBehavior"] == "ENQUEUE" and title(enq_x) == "Picked"
+
+
+async def test_play_next_before_anything_is_lined_up_goes_right_after(skill: Skill) -> None:
+    c = client(skill)
+    first = await start(skill)
+    c.post("/api/play/echo", json={"device": SHORT, "mode": "next", "tracks": [TRACK]})
+    [enq] = directives(await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", first)))
+    assert title(enq) == "Picked"
+
+
+async def test_old_play_now_pick_does_not_hijack_a_new_voice_request(skill: Skill) -> None:
+    """Audit: a "Play now" pick survived "play my liked songs" (and next/previous/start over),
+    and the first PlaybackStarted of the new song jumped to the old pick."""
+    skill.catalog.signed_in = True  # type: ignore[misc]
+    c = client(skill)
+    first = await start(skill)
+    await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", first))
+    c.post("/api/play/echo", json={"device": SHORT, "mode": "now", "tracks": [TRACK]})
+    resp = await skill.handle(intent("PlayLikedIntent"))
+    [play] = directives(resp)
+    started = await skill.handle(event("AudioPlayer.PlaybackStarted", tok(play)))
+    assert not directives(started) and not skill.store.get(DEVICE).pending
+
+    for command in ("AMAZON.NextIntent", "AMAZON.PreviousIntent", "AMAZON.StartOverIntent"):
+        c.post("/api/play/echo", json={"device": SHORT, "mode": "now", "tracks": [TRACK]})
+        [play] = directives(await skill.handle(intent(command)))
+        started = await skill.handle(event("AudioPlayer.PlaybackStarted", tok(play)))
+        assert not directives(started), command
+
+
+async def test_resume_plays_a_pick_made_while_paused(skill: Skill) -> None:
+    c = client(skill)
+    first = await start(skill)
+    await skill.handle(intent("AMAZON.PauseIntent"))
+    await skill.handle(event("AudioPlayer.PlaybackStopped", first, offsetInMilliseconds=9_000))
+    c.post("/api/play/echo", json={"device": SHORT, "mode": "now", "tracks": [TRACK]})
+    [play] = directives(await skill.handle(intent("AMAZON.ResumeIntent")))
+    assert title(play) == "Picked" and play["audioItem"]["stream"]["offsetInMilliseconds"] == 0
+
+
+async def test_a_failed_play_now_pick_is_skipped_not_retried(skill: Skill) -> None:
+    """Audit: a picked song that failed was jumped to again (pending was still set)."""
+    c = client(skill)
+    first = await start(skill)
+    c.post("/api/play/echo", json={"device": SHORT, "mode": "now", "tracks": [TRACK]})
+    [enq] = directives(await skill.handle(event("AudioPlayer.PlaybackNearlyFinished", first)))
+    assert title(enq) == "Picked"
+    await skill.handle(event("AudioPlayer.PlaybackFinished", first))
+    failed = await skill.handle(
+        event("AudioPlayer.PlaybackFailed", tok(enq), error={"type": "MEDIA_ERROR_UNKNOWN"})
+    )
+    [play] = directives(failed)
+    assert title(play) != "Picked"
+    assert not skill.store.get(DEVICE).pending
+
+
+async def test_picks_while_shuffled_keep_the_original_order(skill: Skill) -> None:
+    """Audit: a dashboard insert with shuffle on saved the shuffled order as the original, so
+    shuffle off no longer restored it."""
+    c = client(skill)
+    await start(skill)
+    original = [t.video_id for t in skill.store.get(DEVICE).tracks]
+    await skill.handle(intent("AMAZON.ShuffleOnIntent"))
+    c.post("/api/play/echo", json={"device": SHORT, "mode": "next", "tracks": [TRACK]})
+    other = {**TRACK, "video_id": "vid00000088", "title": "Last"}
+    c.post("/api/play/echo", json={"device": SHORT, "mode": "queue", "tracks": [other]})
+    await skill.handle(intent("AMAZON.ShuffleOffIntent"))
+    after = [t.video_id for t in skill.store.get(DEVICE).tracks]
+    assert after == [original[0], "vid00000077", *original[1:], "vid00000088"]
+
+
+async def test_adding_to_a_full_queue_reports_what_fit(skill: Skill) -> None:
+    """Audit: "Add to end" on a full queue said every song was added after dropping them."""
+    c = client(skill)
+    await start(skill)
+    many = [{**TRACK, "video_id": f"x{i:010d}", "title": f"T{i}"} for i in range(60)]
+    r = c.post("/api/play/echo", json={"device": SHORT, "mode": "queue", "tracks": many}).json()
+    state = skill.store.get(DEVICE)
+    fit = sum(1 for t in state.tracks if t.video_id.startswith("x"))
+    assert r["placed"] == fit < 60 and "full" in r["note"]
+
+
+async def test_queue_on_an_echo_that_has_nothing_to_play(skill: Skill) -> None:
+    from echo_tunes.player.state import PlayerState
+
+    skill.store.put(DEVICE, PlayerState())
+    r = client(skill).post(
+        "/api/play/echo", json={"device": SHORT, "mode": "now", "tracks": [TRACK]}
+    )
+    assert r.status_code == 409 and "by voice first" in r.text
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "params"),
+    [
+        ("search", "/api/search", {"q": "x"}),
+        ("get_home", "/api/browse/home", {}),
+        ("get_charts", "/api/browse/explore", {}),
+        ("get_playlist", "/api/browse/tracks", {"kind": "playlist", "id": "PLtop"}),
+    ],
+)
+def test_youtube_errors_become_502(skill: Skill, method: str, path: str, params: dict) -> None:  # type: ignore[type-arg]
+    yt = FakeYT()
+
+    def boom(*a: Any, **kw: Any) -> None:
+        raise ConnectionError("YouTube Music unreachable")
+
+    setattr(yt, method, boom)
+    if skill.history is None:
+        skill.history = History(":memory:", 15)
+    deps = DashboardDeps(
+        store=skill.store, history=skill.history, signed_in=lambda: False,
+        catalog=YTMusicCatalog(yt, signed_in=False), skill=skill,
+    )  # fmt: skip
+    c = TestClient(create_dashboard(deps), base_url="http://localhost:8081")
+    r = c.get(path, params=params)
+    assert r.status_code == 502 and "didn't answer" in r.text
+
+
+def test_not_signed_in_and_bad_ids_are_409_and_422(skill: Skill) -> None:
+    c = client(skill, password=None)
+    assert c.get("/api/browse/tracks", params={"kind": "playlist", "id": "LM"}).status_code == 409
+    bad = c.get("/api/browse/tracks", params={"kind": "song", "id": "bad id!"})
     assert bad.status_code == 422
 
 
@@ -287,6 +445,9 @@ def test_manifest_and_service_worker_follow_the_settings(skill: Skill, tmp_path:
     assert any(i.get("purpose") == "maskable" for i in m.json()["icons"])
     sw = c.get("/sw.js")
     assert sw.status_code == 200 and "javascript" in sw.headers["content-type"]
+    # Audit: any page navigation was cached as the app shell, /api/* and /metrics included.
+    assert 'const PAGES = ["/", "/login"]' in sw.text and "PAGES.includes(url.pathname)" in sw.text
+    assert "echo-tunes-shell-v2" not in sw.text  # a new cache name drops what v2 stored
     assert c.get("/app-icon.png").status_code == 404
     for icon in ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"):
         assert c.get(f"/static/{icon}").status_code == 200

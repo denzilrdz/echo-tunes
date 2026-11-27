@@ -11,6 +11,8 @@ description: The audio relay and the yt-dlp resolver. Use when changing src/echo
   when a worker is recycled.
 - One lookup per song at a time: `_inflight` holds an **asyncio Task**; callers `shield()` it,
   so a caller that gives up doesn't cancel it for others.
+- An `asyncio.Semaphore` sized to the worker count gates submissions: lookups wait their turn
+  outside the pool, and `RESOLVE_TIMEOUT` starts only once one is running.
 - A lookup over `RESOLVE_TIMEOUT` restarts the pool (terminating the stuck worker). Lookups
   that were sharing the old pool see `BrokenProcessPool`/a cancelled future and **retry once**
   on the new pool.
@@ -31,7 +33,14 @@ description: The audio relay and the yt-dlp resolver. Use when changing src/echo
   the Echo retries with a Range).
 - Ranges follow RFC 9110: anything not understood is ignored (200 with the whole file); only a
   well-formed range past the end is 416.
-- `echo_tunes_streams_total{outcome}`: ok, cut_short, client_gone, client_stalled, too_many,
+- `AudioResponse` also drops a client reading under `MIN_RATE` (4 KB/s) over a `RATE_WINDOW`
+  (60 s) after `RATE_GRACE` (30 s) (outcome `client_stalled`). uvicorn then *closes* (not
+  aborts) the socket: the slot and the YouTube connection are freed at once, but the kernel
+  may keep a socket whose peer never reads until its TCP timeout. `limit_concurrency` on the
+  public server (`cli.PUBLIC_MAX_CONNECTIONS`, 64) bounds those.
+- A network error on the readiness probe is a `StreamError(502)` (one log line), and a 416
+  carries `Content-Range: bytes */<size>`.
+- `echo_tunes_streams_total{outcome}`: ok, cut_short, client_gone, client_stalled, cut, too_many,
   bad_link, youtube_error, range_error, error. Keep docs/MONITORING.md in sync.
 
 ## Don'ts

@@ -63,6 +63,10 @@ def check(secret: bytes, token: str, now: float | None = None) -> str:
         sig = _unb64(sig_text)
     except ValueError as exc:
         raise BadToken("malformed") from exc
+    # 22 characters carry 132 bits for 128: the last character's spare bits are ignored when
+    # decoding, so 16 spellings would decode the same. Only the one we hand out is accepted.
+    if _b64(sig) != sig_text:
+        raise BadToken("malformed")
     if not hmac.compare_digest(sig, _sign(secret, f"{video_id}.{expires_text}")):
         raise BadToken("bad signature")
     if int(expires_text) < (time.time() if now is None else now):

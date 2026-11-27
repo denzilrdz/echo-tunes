@@ -113,12 +113,12 @@ docker compose exec echo-tunes echo-tunes doctor
 ```
 
 ```text
-echo-tunes 0.2.2 doctor
+echo-tunes 0.3.0 doctor
 
   ✓ Configuration: Public address https://music.example.com, 1 skill ID(s)
   ✓ Data folder: /data is writable
   ✓ Deno (JavaScript for yt-dlp): deno 2.9.8 (stable, release, x86_64-unknown-linux-gnu)
-  ✓ yt-dlp: 2026.11.23
+  ✓ yt-dlp: 2026.11.23 (3 days old)
   ✓ YouTube Music search: found Never Gonna Give You Up by Rick Astley
   ✓ Audio from YouTube: downloaded in 3.1s
   ✓ Public address: https://music.example.com/healthz answered over HTTPS

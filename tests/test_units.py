@@ -102,3 +102,18 @@ def test_store_round_trip_and_device_limit() -> None:
     assert store.count() == 3
     assert store.get("device-9").tracks[0].video_id == "vid00000001"
     assert store.get("device-0").tracks == []  # evicted, starts fresh
+    store.close()
+
+
+def test_stream_tokens_accept_only_the_canonical_signature() -> None:
+    """Audit: base64's spare bits let 16 spellings of one signature through."""
+    good = tokens.make(SECRET, "dQw4w9WgXcQ", 600)
+    assert tokens.check(SECRET, good) == "dQw4w9WgXcQ"
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    sig = good.rsplit(".", 1)[1]
+    twins = [good[:-1] + c for c in alphabet if c != good[-1]]
+    same = [t for t in twins if tokens._unb64(t.rsplit(".", 1)[1]) == tokens._unb64(sig)]
+    assert len(same) == 15
+    for t in same:
+        with pytest.raises(tokens.BadToken):
+            tokens.check(SECRET, t)

@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+# Your own private values for scripts/check-private-info.sh (never committed)
+.private-ids
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

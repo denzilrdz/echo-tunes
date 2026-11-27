@@ -6,6 +6,9 @@ services:
     image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     container_name: echo-tunes-caddy
     restart: unless-stopped
+    logging: # rotate logs: at most 3 x 10 MB
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     ports: ["80:80", "443:443"]
     environment:
       DOMAIN: ${DOMAIN}             # e.g. music.example.com
@@ -15,9 +18,15 @@ services:
     depends_on: [echo-tunes]
 
   echo-tunes:
+    # Our own release, by tag. To pin it exactly, add the digest shown on the release page or by
+    # `docker buildx imagetools inspect ghcr.io/denzilrdz/echo-tunes:0.3.0`:
+    # image: ghcr.io/denzilrdz/echo-tunes:0.3.0@sha256:<digest>
     image: ghcr.io/denzilrdz/echo-tunes:0.3.0
     container_name: echo-tunes
     restart: unless-stopped
+    logging: # rotate logs: at most 3 x 10 MB
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     env_file: .env
     ports:
       - "127.0.0.1:8081:8081" # private dashboard (open via SSH: ssh -L 8081:localhost:8081 …)

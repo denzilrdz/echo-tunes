@@ -61,7 +61,12 @@ packages = ["src/echo_tunes"]
 
 # Only what's committed and needed to build and test: never stray local files (.env, data/).
 [tool.hatch.build.targets.sdist]
-only-include = ["src", "tests", "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml", "uv.lock"]
+only-include = [
+  "src", "tests", "skill-package", "demo", "scripts",
+  # what the demo build (tests/test_demo.py) copies
+  "docs/img/social-preview.png", "docs/img/dashboard-light.png", "docs/img/dashboard-dark.png",
+  "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml", "uv.lock",
+]
 
 [tool.ruff]
 line-length = 100
@@ -88,4 +93,13 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
+# Unclosed files and databases fail the run (ResourceWarnings surface as "unraisable").
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient`",
+  "error::ResourceWarning",
+  # Old starlette/anyio (the lowest-versions CI run) leave a test client's event loop and its
+  # self-pipe unclosed; not our resource, and harmless.
+  "ignore:unclosed event loop:ResourceWarning",
+  "ignore:unclosed <socket.socket fd=[0-9]+, family=1:ResourceWarning",
+  "error::pytest.PytestUnraisableExceptionWarning",
+]

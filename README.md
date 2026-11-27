@@ -198,8 +198,8 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | -------------------------------------- | ---------- | --------------------------------------------------------------------------- |
 | `ECHO_TUNES_PUBLIC_URL`                | (required) | Public HTTPS address of this server, e.g. `https://music.example.com`.      |
 | `ECHO_TUNES_SKILL_IDS`                 | (required) | Your skill ID(s), comma-separated. Requests for other skills are refused.   |
-| `ECHO_TUNES_LOCATION`                  | (empty)    | Two-letter country for search results: `US`, `GB`, `IN`, ...                |
-| `ECHO_TUNES_LANGUAGE`                  | `en`       | Language for song and artist names.                                         |
+| `ECHO_TUNES_LOCATION`                  | (empty)    | Two-letter country for search results: `US`, `GB`, `IN`, ... (any case; one YouTube Music supports). |
+| `ECHO_TUNES_LANGUAGE`                  | `en`       | Language for song and artist names: `en`, `de`, `es`, `fr`, `hi`, `ja`, `zh_CN`, ... (not `en-US`). |
 | `ECHO_TUNES_RADIO_LENGTH`              | `25`       | Songs a radio adds at a time (5 to 50).                                     |
 | `ECHO_TUNES_MAX_QUEUE`                 | `200`      | Longest queue kept per Echo (20 to 1000); played songs are dropped first.   |
 | `ECHO_TUNES_GOOGLE_CLIENT_ID`          | (none)     | OAuth client for `echo-tunes login` (or type it in at login).               |
@@ -214,8 +214,9 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_DASHBOARD_HOSTS`           | (none)     | Extra host names you open the dashboard by, comma-separated, no port (e.g. `music-dash.lan`). |
 | `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Password for the dashboard (user `admin`); needed to play, queue and clear history from it. |
 | `ECHO_TUNES_DASHBOARD_SESSION_DAYS`    | `180`      | Days a phone or browser stays signed in to the dashboard (`0` = until you sign out). |
+| `ECHO_TUNES_DASHBOARD_API_TOKEN`       | (none)     | Bearer token (32+ random characters) for monitors and scripts; skips the password checks ([how](docs/MONITORING.md)). |
 | `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |
-| `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `BEWY4D23ORJQ=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
+| `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `LIVINGROOM01=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
 | `ECHO_TUNES_EXPERIMENTAL_SKIP`         | `false`    | Let the player try to skip the song playing on an Echo ([how it works](docs/DASHBOARD.md#player)). |
 | `ECHO_TUNES_APP_NAME`                  | `echo-tunes` | Name of the installed phone app.                                          |
 | `ECHO_TUNES_APP_COLOR`                 | `#1f6feb`  | Its theme colour (`#rrggbb`).                                               |

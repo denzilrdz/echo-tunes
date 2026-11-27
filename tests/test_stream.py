@@ -230,6 +230,51 @@ async def test_a_client_that_stops_reading_is_dropped(monkeypatch) -> None:  # t
     assert resp.outcome == "client_stalled" and closed == [True] and finished[0]
 
 
+async def test_a_client_that_reads_only_a_trickle_is_dropped(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Audit: a client reading a few bytes now and then kept its slot for the whole song."""
+    import asyncio
+
+    monkeypatch.setattr(stream_mod, "RATE_GRACE", 0.05)
+    monkeypatch.setattr(stream_mod, "RATE_WINDOW", 0.1)
+    monkeypatch.setattr(stream_mod, "MIN_RATE", 10_000)
+
+    async def body():  # type: ignore[no-untyped-def]
+        for _ in range(1000):
+            yield b"x" * 10
+
+    async def send(msg: dict) -> None:  # type: ignore[type-arg]
+        await asyncio.sleep(0.01)  # ~1 KB/s: reading, but far too slowly
+
+    t0 = time.monotonic()
+    resp, closed = await _response_run(body(), send, 10_000)
+    assert resp.outcome == "client_stalled" and closed == [True]
+    assert time.monotonic() - t0 < 1.0
+
+    async def fast(msg: dict) -> None:  # type: ignore[type-arg]
+        await asyncio.sleep(0)
+
+    resp, _ = await _response_run(body(), fast, 10_000)
+    assert resp.outcome == "ok"
+
+
+async def test_a_network_error_on_the_readiness_probe_is_a_502() -> None:
+    """Audit: a connection error while probing YouTube logged a full traceback."""
+
+    def down(req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route to host")
+
+    relay = StreamRelay(OneSource(), httpx.AsyncClient(transport=httpx.MockTransport(down)))
+    with pytest.raises(StreamError) as exc:
+        await relay.open("dQw4w9WgXcQ", None)
+    assert exc.value.status == 502 and "ConnectError" in str(exc.value)
+
+
+def test_416_says_how_big_the_file_is() -> None:
+    with pytest.raises(StreamError) as exc:
+        parse_range("bytes=500-", 100)
+    assert exc.value.total == 100
+
+
 async def test_a_song_cut_short_is_not_finished_or_counted_ok() -> None:
     async def body():  # type: ignore[no-untyped-def]
         yield b"x" * 10
