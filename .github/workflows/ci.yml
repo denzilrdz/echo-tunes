@@ -1,7 +1,9 @@
 name: ci
 
 # Every push to main and every pull request: workflow lint, privacy check, format, lint,
-# type check, tests (including the memory soak test), and a Docker build with a smoke test.
+# type check, tests (including the memory soak test), the web app (lint, types, tests, a
+# reproducible build, size budget, an end-to-end test under the real CSP) and a Docker build
+# with a smoke test.
 on:
   push:
     branches: [main]
@@ -64,6 +66,48 @@ jobs:
           uv pip install -q -p .venv-lowest -r lowest.txt
           uv pip install -q -p .venv-lowest --no-deps .
           .venv-lowest/bin/python -m pytest -q -p no:cacheprovider
+
+  web:
+    name: web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          package-manager-cache: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+      - name: Install (exact versions from package-lock.json, no install scripts)
+        run: npm ci
+      - name: Lint (Biome)
+        run: npm run lint
+      - name: Type check
+        run: npm run typecheck
+      - name: Unit tests (Vitest)
+        run: npm test
+      - name: Build, and check the committed build is up to date
+        run: |
+          npm run build
+          git diff --exit-code -- ../src/echo_tunes/web/dist
+          test -z "$(git status --porcelain -- ../src/echo_tunes/web/dist)"
+      - name: Size budget (initial JS <= 150 KB, CSS <= 25 KB, gzipped)
+        run: npm run size
+      - name: End-to-end under the real CSP (demo and the real dashboard)
+        run: |
+          uv sync --locked
+          uv run python ../scripts/build_demo.py ../site
+          npx playwright install --with-deps chromium
+          npm run e2e
 
   docker:
     name: docker
