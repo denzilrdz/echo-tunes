@@ -26,7 +26,8 @@ description: Security rules for echo-tunes. Use before merging anything that tou
 
 - [ ] Host allowlist (`host_allowed`): IPs, localhost, the public URL's name and
       `DASHBOARD_HOSTS` only (blocks DNS rebinding). Cross-site `Sec-Fetch-Site` is refused.
-- [ ] Strict CSP, no inline script/style; the page only ever inserts text (`textContent`).
+- [ ] Strict CSP, no inline script/style (web app: no `dangerouslySetInnerHTML`, no `<style>`
+      injection; `npm run e2e` checks); the page only ever inserts text.
 - [ ] Request bodies capped at 256 KB (`BodyLimit`: Content-Length and while reading);
       validation errors never echo the input.
 - [ ] **State-changing endpoints** (play, queue, test play, clear history): POST only, password required
@@ -39,8 +40,8 @@ description: Security rules for echo-tunes. Use before merging anything that tou
       (`POST /api/logout/all`) really end sessions; the issue time is checked against the
       current `DASHBOARD_SESSION_DAYS`; HttpOnly, SameSite=Lax, Secure behind HTTPS).
       Monitors use `DASHBOARD_API_TOKEN` (Bearer, >= 32 chars, no gate); scripts may use Basic
-      auth. Only `/login`, `/api/login`, `/static/*`, the manifest and `/sw.js` are public; no
-      `WWW-Authenticate` for browser requests (no pop-up). Every password check (sign-in or
+      auth. Only `/login`, `/api/login`, `/static/*`, `/assets/*` (the built app, no data),
+      the manifest and `/sw.js` are public; no `WWW-Authenticate` for browser requests (no pop-up). Every password check (sign-in or
       Basic) waits for one shared gate *before* comparing SHA-256 digests (constant time
       whatever the length); a wrong one holds it 1 s; over 20 queued get 429. No per-address
       lockout (behind a proxy everyone shares one address).

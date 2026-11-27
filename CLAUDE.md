@@ -6,7 +6,8 @@ Python 3.13+ process (FastAPI + uvicorn) in one Docker image, with two ports:
 - **public 8080**: `POST /alexa` (Amazon-signed requests), `GET /stream/<token>.m4a` (audio
   relay), `/healthz`, `/`. Something else (Caddy, Cloudflare Tunnel, Tailscale Funnel, any
   proxy) puts HTTPS in front of it. Nothing in the code may assume a particular host or tunnel.
-- **private 8081**: the dashboard and web player (`src/echo_tunes/web/`, an installable PWA),
+- **private 8081**: the dashboard and web player (React app in `web/`, built into
+  `src/echo_tunes/web/dist/`; an installable PWA),
   its JSON API and `/metrics`. Never published to the internet.
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing playback, streaming or
@@ -23,8 +24,12 @@ uv run zizmor --persona=auditor .github/ && uv run actionlint   # after touching
 scripts/check-private-info.sh                 # no real IPs, tailnet names or IDs (CI runs it)
 uv run echo-tunes doctor | serve | login | logout   # needs .env (see .env.example) and Deno
 docker build -t echo-tunes:dev .
-uv run python scripts/build_demo.py site      # GitHub Pages: landing page + dashboard demo
-uv run --with pillow python scripts/screenshots.py   # docs/img/*.png + social preview
+(cd web && npm ci && npm run build)          # web app -> src/echo_tunes/web/dist (commit it)
+(cd web && npm run dev)                       # Vite dev server; proxies /api to :18081
+(cd web && npm run lint && npm run typecheck && npm test && npm run size)
+(cd web && npm run e2e)                       # Playwright, real CSP; needs site/ (next line)
+uv run python scripts/build_demo.py site      # GitHub Pages: landing page + web player demo
+uv run --with pillow python scripts/screenshots.py [--icons]   # docs/img, social, PWA shots
 uv run python scripts/build_voice_model.py    # skill-package voice models, all locales
 ```
 
@@ -47,11 +52,11 @@ src/echo_tunes/
   history.py        play history (SQLite, retention), stats
   metrics.py        Prometheus registry (fixed label values only)
   checks.py         setup checks shared by `doctor` and the dashboard
-  web/              dashboard HTML/CSS, app.js (tabs) + player.js (player, own scope),
-                    sw.js, icons (no build step, no framework, no inline script)
+  web/dist/         the built web app (generated from web/, committed, never edited)
 tests/              pytest; fakes in conftest.py; property, state-machine and memory tests
 fuzz/               Atheris fuzzers (Linux), weekly in CI
-demo/ scripts/      Pages site, screenshots, voice model
+web/                the web app: React + TypeScript + Vite + Tailwind 4 + Base UI (skill web-ui)
+demo/ scripts/      landing page, social image, screenshots, voice model
 skill-package/      Alexa skill manifest + voice models (generated)
 examples/           compose setups: caddy, cloudflare-tunnel, tailscale-funnel
 ```
@@ -110,9 +115,15 @@ events (skill `testing`). `uv run pytest` must pass before every commit; CI also
   (`if __name__` guards in scripts).
 - **uvicorn's signal handler re-raises** after shutdown; `cli.serve()` installs its own.
 - **The invocation name is "my tunes"**: Amazon rejects names containing a wake word ("echo").
-- **Dashboard pages follow a strict CSP** (no inline scripts or styles); the demo injects data
-  through `window.ECHO_TUNES_DEMO`. Classic scripts share one global scope: keep `player.js`
-  inside its IIFE (a duplicate top-level `const` breaks the whole file).
+- **Dashboard pages follow a strict CSP** (`script-src 'self'; style-src 'self'`): no inline
+  scripts, `<style>` elements or `style=""` attributes; React's `style` prop is fine (CSSOM).
+  Base UI runs inside `<CSPProvider disableStyleElements>`; avoid libraries that inject
+  `<style>` (skill `web-ui`). `npm run e2e` fails on any CSP violation.
+- **The committed build must match `web/`**: change the app, then `npm run build` and commit
+  `src/echo_tunes/web/dist` (CI diffs it). `dashboard.page_html()` fills the app name and
+  accent into the placeholders in `web/index.html`; keep them.
+- **The Pages demo is the real build** plus `<meta name="echo-tunes-demo">`, which makes the app
+  load `web/src/demo/demo-api.ts` (fake API). It must answer every API call the app makes.
 - **The player can't control an Echo directly**: picks are applied in the reply to the Echo's
   next event (`PlayerState.pending`, `Skill._pending_jump`), and `PlayerState.enqueued` tracks
   the song the Echo has already lined up. See skill `alexa-playback`.
@@ -125,8 +136,8 @@ events (skill `testing`). `uv run pytest` must pass before every commit; CI also
 - **Amazon's certificate file names vary**: only the `/echo.api/` folder rule is Amazon's.
   0.2.1-0.2.2 refused every real request with a stricter pattern; test changes to
   `alexa/verify.py` in the developer console's simulator before releasing (skill `release`).
-- **Headless Chrome ignores `prefers-color-scheme`** for screenshots: `scripts/screenshots.py`
-  makes themed CSS copies.
+- **Screenshots force the theme with `?theme=light|dark`** (and `?shots` for made-up songs);
+  `boot.js` moves the page's `?query` out of the address bar before the hash router starts.
 
 ## Skills (.claude/skills/)
 

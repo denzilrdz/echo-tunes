@@ -6,53 +6,73 @@ it works like an app. **[Try the demo](https://denzilrdz.github.io/echo-tunes/de
 data, nothing plays).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/player-dark.png" />
-  <img src="img/player-light.png" alt="The player: search, your library, quick picks, trending playlists and moods, with the player bar at the bottom" width="100%" />
+  <source media="(prefers-color-scheme: light)" srcset="img/player-desktop-light.png" />
+  <img src="img/player-desktop-dark.png" alt="The player on a computer: quick picks, your library, the Now Playing panel and the player bar" width="100%" />
 </picture>
 
-| Tab | What you see |
+On a phone the app has four tabs at the bottom, with the mini-player above them; on a
+computer they're in a sidebar, with the player bar at the bottom and a Now Playing panel on
+the right.
+
+| Page | What you see |
 | --- | --- |
-| **Player** | Search songs, albums, artists and playlists; browse quick picks, your mixes and library (when signed in), trending charts, top artists and moods & genres. Play in this browser (with a queue, radio that keeps going, and lock-screen controls) or choose an Echo under **Play on** to queue songs there. |
-| **Now playing** | Each Echo's song with artwork and a live progress bar, why it's playing ("Asked for …", "Radio after …", "Playlist: …"), shuffle/loop, and the next 10 songs. Playing Echos come first. |
-| **History** | Every song played in the last 15 days (configurable): when, which Echo, why, how long it was listened to, and whether it finished, was skipped, paused or failed. Filter by Echo and period, search by song or artist. |
-| **Stats** | Plays, listening time, different songs and artists, plays per day, top songs and top artists, for a chosen period and Echo. |
-| **Monitoring** | Health at a glance, plus copy-ready settings for Uptime Kuma, Prometheus and Home Assistant ([MONITORING.md](MONITORING.md)). |
-| **Setup** | The same checklist as `echo-tunes doctor` (configuration, YouTube, your public address, "has Alexa reached this server?"), and a **Test play** button that plays a song in your browser through YouTube, this server and your public address, exactly like an Echo. |
+| **Home** | Quick picks, your mixes and library (when the server is signed in to YouTube Music), charts, top artists, and moods & genres. A *Finish setup* note appears only if a setup check fails. |
+| **Search** | Results as you type, filtered by songs, albums, artists or playlists: a top result, songs, then shelves. Recent searches are remembered on this device. |
+| **Library** | Your playlists, *Liked songs* first (needs `echo-tunes login` on the server). |
+| **Devices** | A card for this browser and each Echo: what's playing, the progress, what's next, what each can do, and buttons to play there or make it the favourite. |
+| **Server** (⚙ on Home on phones, the sidebar on computers) | **Status** (health, plus copy-ready settings for Uptime Kuma, Prometheus and Home Assistant, see [MONITORING.md](MONITORING.md)), **Stats**, **History** (filter by device, period and song; *Clear history*), **Setup** (the `echo-tunes doctor` checklist and a **Test play** button that plays a song in your browser through YouTube, this server and your public address, exactly like an Echo) and **Settings** (theme, favourite device, install, sign out). |
+
+Tap the mini-player (or swipe it up) for **Now Playing**: big artwork, the colours of the cover,
+the controls, and *Up next*. Every song row has a ⋯ menu (right-click works too): play now,
+play next, add to the queue, start a radio, go to the artist.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/history-dark.png" />
-  <img src="img/history-light.png" alt="History tab: every song played, when, on which Echo, why, and how long it was listened to" width="100%" />
+  <source media="(prefers-color-scheme: light)" srcset="img/history-light.png" />
+  <img src="img/history-dark.png" alt="History tab: every song played, when, on which Echo, why, and how long it was listened to" width="100%" />
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/stats-dark.png" />
-  <img src="img/stats-light.png" alt="Stats tab: plays, listening time, plays per day, top songs and top artists" width="100%" />
+  <source media="(prefers-color-scheme: light)" srcset="img/stats-light.png" />
+  <img src="img/stats-dark.png" alt="Stats tab: plays, listening time, plays per day, top songs and top artists" width="100%" />
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/setup-dark.png" />
-  <img src="img/setup-light.png" alt="Setup tab: the setup checklist and the Test play button" width="100%" />
+  <source media="(prefers-color-scheme: light)" srcset="img/setup-light.png" />
+  <img src="img/setup-dark.png" alt="Setup tab: the setup checklist and the Test play button" width="100%" />
 </picture>
 
-## Player
+## Where music plays
 
-**Play on: This browser.** The song streams from your server through your public address,
+**Your favourite device.** The first time you open the app it asks *Where should music play?*:
+this phone (or browser) or one of your Echos. That choice is your favourite: it's selected
+every time you open the app on that device, and shown at all times on the mini-player
+(*Playing on Living room*). Tap it to switch for now, or tap the ☆ in that list (or Devices,
+or Settings) to change the favourite. It's remembered in the browser, so each phone can have
+its own.
+
+**This phone / this browser.** The song streams from your server through your public address,
 like on an Echo. When the queue runs out, a radio of similar songs keeps it going. Media keys
-and your phone's lock screen control it. Songs played here appear in the history as
-*dashboard-browser*.
+and your phone's lock screen control it. Songs played here appear in the history and stats as
+*Web player*.
 
 **Play on: an Echo.** Alexa only lets a skill change what an Echo plays when the Echo checks in
 (when a song starts or is about to end); a web page can't push to it. So:
 
-| Button | On an Echo |
+Buttons say so: on an Echo, *Play* reads **Play next**, and the toast tells you when it plays
+("Queued on Living room · plays after 'Song X'"). Pause and previous are shown but turned off,
+with the reason ("Say 'Alexa, pause'").
+
+| Action | On an Echo |
 | --- | --- |
-| **▶ Play** | Plays after the current song. If the Echo had already lined up its next song, it switches as soon as that one starts. If the Echo is paused, saying "resume" plays it. A newer voice request wins over it. |
+| **▶ Play next** | Plays after the current song. If the Echo had already lined up its next song, it switches as soon as that one starts. If the Echo is paused, saying "resume" plays it. A newer voice request wins over it. |
 | **Next** | After whatever the Echo plays next: right after the current song, or after the song the Echo has already lined up. |
 | **+** (Add to queue) | At the end of the queue. |
 | **Radio** | A radio of similar songs, after the current song. |
 
 The Echo must be playing (or paused) something from echo-tunes; start it by voice the first
-time. Pause, resume and previous stay with your voice and the Echo's buttons.
+time. An idle Echo is still listed, with a note to start it by voice ("Alexa, ask my tunes to
+play …") and a one-tap *Play here instead*: a web page can't wake an idle Echo. Pause, resume
+and previous stay with your voice and the Echo's buttons.
 
 **Skip now (experimental).** With `ECHO_TUNES_EXPERIMENTAL_SKIP=true`, the ⏭ button on an Echo
 cuts the current song's audio stream, so the Echo gives up on it and plays the next. It only
@@ -88,12 +108,13 @@ secure addresses, e.g. Tailscale Serve, Caddy with a LAN certificate, or `localh
 - **iPhone/iPad (Safari):** Share → *Add to Home Screen*.
 - **Desktop (Chrome, Edge):** the install icon in the address bar.
 
-It opens full screen with its own icon. Change how it looks without touching code:
+It opens full screen with its own icon, and follows the phone's light or dark mode (or the
+choice in Settings). Change how it looks without touching code:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ECHO_TUNES_APP_NAME` | `echo-tunes` | Name under the icon and in the title bar. |
-| `ECHO_TUNES_APP_COLOR` | `#1f6feb` | Theme colour (`#rrggbb`), used by the phone's status bar. |
+| `ECHO_TUNES_APP_COLOR` | (violet) | Accent colour (`#rrggbb`) for buttons and highlights. The title bar and splash screen always use the app's background, so they match the light and dark themes. |
 | `ECHO_TUNES_APP_ICON` | (built in) | Path to your own square PNG (512×512 or larger, under 2 MB), e.g. `/data/icon.png`. |
 
 ## Safety
@@ -132,12 +153,12 @@ private as long as you don't publish 8081 to the internet yourself.
 | `ECHO_TUNES_DASHBOARD_API_TOKEN` | (none) | Bearer token for monitors and scripts (at least 32 characters). Skips the password checks. |
 | `ECHO_TUNES_HISTORY_DAYS` | `15` | Days of play history to keep. `0` keeps none (and deletes what's there). |
 | `ECHO_TUNES_DEVICE_NAMES` | (none) | Friendly names, e.g. `LIVINGROOM01=Living room,K1TCHEN0ECHO=Kitchen`. |
-| `ECHO_TUNES_EXPERIMENTAL_SKIP` | `false` | Let the player try to skip the song playing on an Echo (see [Player](#player)). |
+| `ECHO_TUNES_EXPERIMENTAL_SKIP` | `false` | Let the player try to skip the song playing on an Echo (see [Where music plays](#where-music-plays)). |
 
 ### Naming your Echos
 
 Alexa only tells a skill a long, random device ID. The dashboard shows its last 12 characters
-(for example *Echo …NGROOM01*). Copy that from the Now playing tab or the History Echo filter and
+(for example *Echo …NGROOM01*). Copy that from the Devices page or the History device filter and
 set `ECHO_TUNES_DEVICE_NAMES=LIVINGROOM01=Living room`, then restart.
 
 ## History and privacy

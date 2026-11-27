@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **A new web player**, designed for phones first: Home, Search, Library and Devices tabs, a
+  mini-player that opens a full-screen *Now Playing* coloured by the cover art, album,
+  playlist and artist pages, a ⋯ menu (and right-click) on every song, light and dark themes,
+  and the administration (Status, Stats, History, Setup, Settings) under *Server*.
+- **A favourite device.** The first time you open it, the app asks where music should play
+  (this phone or one of your Echos) and selects that every time; *Playing on Living room* is
+  always shown and one tap switches. On an Echo, buttons say *Play next*, pause and previous
+  say why they're off, and an idle Echo offers *Play here instead*.
+- The install manifest has screenshots and shortcuts (Search, Devices) for a richer install
+  dialog.
+
 - `ECHO_TUNES_DASHBOARD_API_TOKEN`: a bearer token for monitors and scripts (Uptime Kuma,
   Prometheus, Home Assistant). It skips the password checks, so wrong passwords sent by
   someone on your network can no longer make monitors or your own sign-in fail with "busy".
@@ -16,6 +27,14 @@ All notable changes to this project are documented here. The format follows
   filtered (`device=browser`).
 
 ### Changed
+
+- The installed app's title bar and splash screen use the app's own background (dark or light)
+  instead of the blue accent. `ECHO_TUNES_APP_COLOR` now only changes the accent colour, and
+  is empty (the built-in violet) by default.
+- The web app is built from `web/` (React, TypeScript, Vite, Tailwind CSS, Base UI) into
+  `src/echo_tunes/web/dist`; the wheel and the Docker image still need no Node. Old bookmarks
+  (`#play`, `#now`, `#history`, …) open the matching new page.
+- New landing page, demo and screenshots in the new design.
 
 - The setup page's test play is an action now: `POST /api/test-play`, which needs the
   dashboard password like the player (`GET` answers 403).
