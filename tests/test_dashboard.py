@@ -112,8 +112,8 @@ def test_built_pages_follow_the_csp(skill: Skill) -> None:
     dist = resources.files("echo_tunes") / "web" / "dist"
     for name in ("index.html", "login.html"):
         page = (dist / name).read_text()
-        assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", page), name
-        assert "<style" not in page and " style=" not in page, name
+        assert not re.search(r"<script\b(?![^>]*\bsrc=)[^>]*>", page, re.IGNORECASE), name
+        assert not re.search(r"<style\b|\sstyle=", page, re.IGNORECASE), name
         assert not re.search(r'(src|href)="(https?:)?//', page), name
         for placeholder in (
             'name="application-name" content="echo-tunes"',

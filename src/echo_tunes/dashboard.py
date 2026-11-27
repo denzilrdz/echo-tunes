@@ -211,7 +211,9 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         if deps.password
         else None
     )
-    token_digest = _token_digest(deps.api_token) if deps.api_token else None
+    # The API token is long and random: compared directly in constant time (only its fixed
+    # length could show in the timing), with no hashing before the rate limit.
+    api_token = deps.api_token.encode() if deps.api_token else None
     # Slow digests of the expected values (the password, the Basic header), worked out once.
     wanted_digests: dict[str, bytes] = {}
     sessions = (
@@ -277,9 +279,9 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         path = request.url.path
         allowed = not deps.password or _public(path) or has_session(request)
         basic = request.headers.get("authorization", "")
-        if not allowed and token_digest and basic[:7].lower() == "bearer ":
+        if not allowed and api_token and basic[:7].lower() == "bearer ":
             # Scripts and monitors: a long random token, so no gate and no delay needed.
-            allowed = hmac.compare_digest(_token_digest(basic[7:].strip()), token_digest)
+            allowed = hmac.compare_digest(basic[7:].strip().encode(), api_token)
         elif not allowed and basic and expected:
             ok = await password_ok(basic, expected)  # scripts (curl -u)
             if ok is None:
@@ -687,12 +689,6 @@ class _LoginIn(BaseModel):
 # secret's length, nothing derived from it outlives the process, and it's a slow hash, as a
 # password deserves. Light parameters (~10 ms, 4 MB); checks run one at a time anyway.
 _COMPARE_SALT = secrets.token_bytes(16)
-
-
-def _token_digest(value: str) -> bytes:
-    """For the API token: a long random value, not a password, so a fast keyed MAC is right
-    (it runs for every Bearer request, before any rate limit)."""
-    return hmac.new(_COMPARE_SALT, value.encode(), "sha256").digest()
 
 
 def _digest(value: str) -> bytes:
