@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
+A new web player built for phones, and the fixes from a second full review. **After updating,
+every browser signs in once more** (sessions changed), and monitors should switch to the new
+API token (`ECHO_TUNES_DASHBOARD_API_TOKEN`).
+
 ### Added
 
 - **A new web player**, designed for phones first: Home, Search, Library and Devices tabs, a
@@ -298,7 +304,8 @@ First release.
   `Content-Length` can't be read without limit.
 - CI's secret scan works on pull requests from Dependabot.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.0...v0.2.1
