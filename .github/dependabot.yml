@@ -48,6 +48,11 @@ updates:
     groups:
       web:
         update-types: [minor, patch]
+    ignore:
+      # Node's type definitions follow the Node version in web/.nvmrc (24): a new major only
+      # when Node itself is upgraded.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker-compose
     directories: ["/examples/*"]
     schedule:
