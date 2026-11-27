@@ -114,13 +114,22 @@ class Sessions:
             known = self._live.get(sid)
         return known == issued and not self._expired(issued, self._clock())
 
-    def rotate(self, value: str) -> str | None:
-        """Swap a valid cookie for a brand-new session (renewing a never-expiring one), so the
-        cookie we send is always made here, never the one the browser sent."""
-        if not self.valid(value):
+    def renew(self, value: str) -> str | None:
+        """Re-issue a valid session's cookie with a new issue time (renewing a never-expiring
+        one). Same session, so signing out still ends every copy; checked and updated under one
+        lock; and the cookie is built from the server's own record, never the browser's text."""
+        parsed = self._parse(value)
+        if parsed is None:
             return None
-        self.revoke(value)
-        return self.create()
+        sid, issued = parsed
+        now = int(self._clock())
+        with self._lock:
+            own = next((k for k in self._live if hmac.compare_digest(k, sid)), None)
+            if own is None or self._live[own] != issued or self._expired(issued, now):
+                return None
+            self._live[own] = now
+            self._save()
+        return f"{own}.{now}.{self._mac(own, now)}"
 
     def revoke(self, value: str) -> bool:
         """Sign this cookie's session out (it stops working everywhere it was copied to)."""

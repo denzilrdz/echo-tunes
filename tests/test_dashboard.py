@@ -406,7 +406,10 @@ def test_a_session_can_last_until_signed_out(skill: Skill) -> None:
     first = c.post("/api/login", json={"password": "s3cret"}).headers["set-cookie"]
     assert f"Max-Age={400 * 86400}" in first
     value = first.split(";")[0]
-    renewed = c.get("/")  # every visit renews the browser's cookie with a fresh session
+    import time as _time
+
+    _time.sleep(1.1)  # the renewed cookie carries a new issue time
+    renewed = c.get("/")  # every visit renews the browser's cookie (same session)
     fresh = renewed.headers["set-cookie"].split(";")[0]
     assert (
         renewed.status_code == 200
@@ -418,6 +421,22 @@ def test_a_session_can_last_until_signed_out(skill: Skill) -> None:
         app, base_url="http://localhost:8081", cookies={value.split("=")[0]: value.split("=", 1)[1]}
     )
     assert old.get("/api/now").status_code == 401  # ...and the old one was retired
+    assert c.post("/api/logout", json={}).status_code == 200
+    assert c.get("/api/now").status_code == 401  # signing out ends the renewed session too
+
+
+def test_renewing_the_same_cookie_twice_does_not_fork_the_session() -> None:
+    """Security review: two renewals of one cookie must not leave two live sessions."""
+    from echo_tunes.sessions import Sessions
+
+    now = [1_000_000.0]
+    s = Sessions(b"k" * 32, 0, clock=lambda: now[0])
+    first = s.create()
+    now[0] += 5
+    a = s.renew(first)
+    b = s.renew(first)  # a second page load racing with the same old cookie
+    assert a is not None and b is None
+    assert s.revoke(a) and not s.valid(a)
 
 
 async def test_parallel_guesses_still_take_turns(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]
