@@ -30,6 +30,7 @@ no Amazon password.
 > **"Alexa, ask my tunes to play Blinding Lights."**
 > Your Echo plays the song, then keeps going with a radio of similar songs. Next, previous,
 > pause, resume, shuffle and loop all work by voice, and from the buttons in the Alexa app.
+> Or say **"Alexa, open my tunes"** and, when it asks, just name the song.
 >
 > **Or pick it yourself:** search and browse YouTube Music in the web player, play it in your
 > browser, or line it up on any Echo. Add it to your phone's home screen and it's an app.
@@ -62,9 +63,10 @@ no Amazon password.
 | **Secure by default**  | Every request's Amazon signature and your skill ID are checked; audio links are signed and expire.                |
 | **Flat memory**        | Bounded caches, streamed audio and recycled worker processes: memory doesn't creep up over weeks of uptime.       |
 | **Web player**         | Search songs, albums, artists and playlists; browse charts, moods and your library. Play in the browser or queue on an Echo. [Demo](https://denzilrdz.github.io/echo-tunes/demo/) |
-| **Phone app**          | Install the dashboard from your browser (it's a PWA): own icon, full screen, lock-screen controls. Name, colour and icon are settings. |
+| **Your favourite speaker** | Pick where music plays (an Echo or this phone) once; it's selected every time you open the app, and one tap switches it. |
+| **Phone app**          | Install the dashboard from your browser (it's a PWA): own icon, full screen, lock-screen controls, sign in once per device. Name, colour and icon are settings. |
 | **Private dashboard**  | Now playing and up next per Echo, 15-day play history (clear it any time), stats, a setup checklist and a "test play" button. |
-| **Bring your own monitoring** | Prometheus `/metrics`, a JSON health check for Uptime Kuma, and a JSON API for Home Assistant.            |
+| **Bring your own monitoring** | Prometheus `/metrics`, a JSON health check for Uptime Kuma, and a JSON API for Home Assistant, with an API token for scripts. |
 | **Self-checking**      | `echo-tunes doctor` checks configuration, YouTube access and your public address in one go.                      |
 | **Kept up to date**    | A daily job picks up new yt-dlp releases, so YouTube changes are fixed quickly.                                  |
 
@@ -150,7 +152,8 @@ docker compose exec echo-tunes echo-tunes doctor
 ```
 
 **4. Enable testing** (the skill's *Test* tab → *Development*) and say:
-*"Alexa, ask my tunes to play Tum Hi Ho."*
+*"Alexa, ask my tunes to play Tum Hi Ho."* Or *"Alexa, open my tunes"*, then just the song
+name. More in [docs/VOICE_COMMANDS.md](docs/VOICE_COMMANDS.md).
 
 **5. Optional: sign in** so you can say *"play my liked songs"* or *"play my playlist Road Trip"*:
 
@@ -242,6 +245,16 @@ adds your own library: liked songs, playlists and mixes.
 music services answer that; a private skill is always called by name. An Alexa routine can give
 you a shorter phrase.
 
+**Alexa says "Sorry, I didn't get that" when I name a song.** Update the voice model in the
+Alexa developer console after upgrading (Build → JSON Editor → paste
+`skill-package/interactionModels/custom/<your locale>.json` → Save → Build Skill). Since 0.4.1
+a song name on its own is understood too.
+
+**The web player says it can't reach my server.** Away from home, connect to your network or
+VPN. At home, your browser or phone may be using its own "secure DNS"/"Private DNS", which skips
+your network's DNS; see
+[Troubleshooting](docs/TROUBLESHOOTING.md#the-dashboard-says-it-cant-reach-the-server).
+
 **Will it work on a cloud server?** Yes, but YouTube is much stricter with data-centre IP
 addresses and may ask them to "sign in to confirm you're not a bot". A home server is the most
 reliable. See [Troubleshooting](docs/TROUBLESHOOTING.md#youtube-blocks-a-cloud-server).
@@ -258,6 +271,7 @@ content, so each person runs their own private copy. That's also why it's self-h
 - [x] Sign in with Google: your playlists, liked songs, mixes and personal radio
 - [x] Private dashboard: now playing, history, stats, setup checklist and test play
 - [x] Prometheus metrics and a health check for Uptime Kuma
+- [x] Mobile-first web player and phone app: search, browse, play here or on any Echo, favourite device
 - [ ] More languages for the voice model (German, Spanish, French, ...): contributions welcome
 
 ## Contributing
