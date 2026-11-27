@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     experimental_skip: bool = False
     # How the dashboard looks when added to a phone's home screen (it's an installable web app).
     app_name: str = Field(default="echo-tunes", min_length=1, max_length=40)
-    app_color: str = Field(default="#1f6feb", pattern=r"^#[0-9a-fA-F]{6}$")
+    app_color: str = Field(default="", pattern=r"^(#[0-9a-fA-F]{6})?$")  # "": built-in accent
     app_icon: Path | None = Field(
         default=None, description="Your own square PNG icon (512x512 or larger) for the app."
     )

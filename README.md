@@ -35,16 +35,17 @@ no Amazon password.
 > browser, or line it up on any Echo. Add it to your phone's home screen and it's an app.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/player-dark.png" />
-  <img src="docs/img/player-light.png" alt="The echo-tunes web player: search, your library, quick picks and trending playlists, with the player bar at the bottom" width="100%" />
+  <source media="(prefers-color-scheme: light)" srcset="docs/img/player-desktop-light.png" />
+  <img src="docs/img/player-desktop-dark.png" alt="The echo-tunes web player on a computer: quick picks, your library, the Now Playing panel and the player bar" width="100%" />
 </picture>
 
 <sub>The web player ([live demo](https://denzilrdz.github.io/echo-tunes/demo/), sample data and made-up songs).</sub>
 
 <table>
   <tr>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/dashboard-dark.png" /><img src="docs/img/dashboard-light.png" alt="Now playing: what each Echo is playing and what's next" /></picture><br><sub><b>Now playing</b> on every Echo, and what's next</sub></td>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/stats-dark.png" /><img src="docs/img/stats-light.png" alt="Stats: plays, listening time, top songs and artists" /></picture><br><sub><b>History and stats</b>, kept on your server</sub></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: light)" srcset="docs/img/player-mobile-light.png" /><img src="docs/img/player-mobile-dark.png" alt="The player on a phone: quick picks and the mini-player, playing on the Living room Echo" /></picture><br><sub><b>On your phone</b>, installed as an app</sub></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: light)" srcset="docs/img/devices-mobile-light.png" /><img src="docs/img/devices-mobile-dark.png" alt="Choosing where music plays: this phone or an Echo, with a star on the favourite" /></picture><br><sub><b>Play on any Echo</b>, or right there</sub></td>
+    <td width="33%"><picture><source media="(prefers-color-scheme: light)" srcset="docs/img/now-playing-mobile-light.png" /><img src="docs/img/now-playing-mobile-dark.png" alt="Now Playing on the Living room Echo, tinted by the cover art" /></picture><br><sub><b>Now playing</b> on every Echo</sub></td>
   </tr>
 </table>
 
@@ -217,9 +218,9 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_DASHBOARD_API_TOKEN`       | (none)     | Bearer token (32+ random characters) for monitors and scripts; skips the password checks ([how](docs/MONITORING.md)). |
 | `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |
 | `ECHO_TUNES_DEVICE_NAMES`              | (none)     | Friendly Echo names: `LIVINGROOM01=Living room,…` ([how](docs/DASHBOARD.md#naming-your-echos)). |
-| `ECHO_TUNES_EXPERIMENTAL_SKIP`         | `false`    | Let the player try to skip the song playing on an Echo ([how it works](docs/DASHBOARD.md#player)). |
+| `ECHO_TUNES_EXPERIMENTAL_SKIP`         | `false`    | Let the player try to skip the song playing on an Echo ([how it works](docs/DASHBOARD.md#where-music-plays)). |
 | `ECHO_TUNES_APP_NAME`                  | `echo-tunes` | Name of the installed phone app.                                          |
-| `ECHO_TUNES_APP_COLOR`                 | `#1f6feb`  | Its theme colour (`#rrggbb`).                                               |
+| `ECHO_TUNES_APP_COLOR`                 | (violet)   | Its accent colour (`#rrggbb`); the title bar follows the app's theme.         |
 | `ECHO_TUNES_APP_ICON`                  | (built in) | Your own square PNG icon for it, e.g. `/data/icon.png`.                     |
 | `ECHO_TUNES_LOG_LEVEL`                 | `info`     | `debug`, `info`, `warning`, `error` or `critical`.                          |
 | `ECHO_TUNES_PORT`                      | `8080`     | Public port (Alexa and the Echo's audio).                                   |

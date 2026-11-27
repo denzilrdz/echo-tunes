@@ -33,6 +33,21 @@ updates:
     groups:
       python:
         patterns: ["*"]
+  # The web app (web/): weekly, minor and patch updates grouped. A PR also needs the rebuilt
+  # src/echo_tunes/web/dist committed (CI's web job fails until `npm run build` is run).
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    labels: [dependencies, javascript]
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    commit-message:
+      prefix: chore
+    groups:
+      web:
+        update-types: [minor, patch]
   - package-ecosystem: docker-compose
     directories: ["/examples/*"]
     schedule:

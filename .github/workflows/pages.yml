@@ -1,7 +1,9 @@
 name: pages
 
-# Publishes the dashboard demo (the real dashboard files + sample data, no server) to
-# https://denzilrdz.github.io/echo-tunes/ whenever the dashboard or the demo changes on main.
+# Publishes the landing page and the web player demo (the committed build of web/ with a fake
+# API, no server, no Node needed here) to
+# https://denzilrdz.github.io/echo-tunes/ whenever the app, the demo or the landing page change
+# on main.
 on:
   push:
     branches: [main]

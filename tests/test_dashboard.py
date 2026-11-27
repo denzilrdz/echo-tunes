@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import sys
 import time
 
@@ -53,7 +54,12 @@ async def test_now_history_stats_and_health(skill: Skill) -> None:
     assert "echo-tunes" in page.text
     assert "script-src 'self'" in page.headers["content-security-policy"]
     assert page.headers["x-frame-options"] == "DENY"
-    assert c.get("/static/app.js").status_code == 200
+    asset = re.search(r'src="\./(assets/index-[\w-]+\.js)"', page.text)
+    assert asset, "index.html must load the built app from /assets/"
+    js = c.get(f"/{asset.group(1)}")
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"]
+    assert "immutable" in js.headers["cache-control"]  # hashed names: cached for good
+    assert c.get("/static/icon.svg").status_code == 200
 
 
 async def test_history_follows_pause_and_next(skill: Skill) -> None:
@@ -98,12 +104,24 @@ def test_password(skill: Skill) -> None:
     assert c.get("/api/now", headers={"Authorization": f"Basic {good}"}).status_code == 200
 
 
-def test_text_is_never_html(skill: Skill) -> None:
-    """The page builds everything with textContent; make sure the JS has no innerHTML."""
+def test_built_pages_follow_the_csp(skill: Skill) -> None:
+    """The committed build (web/ -> src/echo_tunes/web/dist) has no inline script or style
+    (the CSP blocks them) and loads nothing from other sites."""
     from importlib import resources
 
-    js = (resources.files("echo_tunes") / "web" / "app.js").read_text()
-    assert "innerHTML" not in js and "insertAdjacentHTML" not in js and "eval(" not in js
+    dist = resources.files("echo_tunes") / "web" / "dist"
+    for name in ("index.html", "login.html"):
+        page = (dist / name).read_text()
+        assert not re.search(r"<script\b(?![^>]*\bsrc=)[^>]*>", page, re.IGNORECASE), name
+        assert not re.search(r"<style\b|\sstyle=", page, re.IGNORECASE), name
+        assert not re.search(r'(src|href)="(https?:)?//', page), name
+        for placeholder in (
+            'name="application-name" content="echo-tunes"',
+            'name="echo-tunes-accent" content=""',
+            'name="apple-mobile-web-app-title" content="echo-tunes"',
+        ):
+            assert placeholder in page, (name, placeholder)  # dashboard.page_html fills these
+    assert (dist / "sw.js").is_file() and (dist / "static" / "icon-192.png").is_file()
 
 
 async def test_setup_checks_and_test_play(skill: Skill) -> None:
@@ -191,8 +209,14 @@ def test_sign_in_once_with_a_long_lived_cookie(skill: Skill) -> None:
     first = c.get("/", follow_redirects=False)
     assert first.status_code == 303 and first.headers["location"] == "/login"
     assert "Sign in" in c.get("/login").text
-    for public in ("/static/app.css", "/manifest.webmanifest", "/sw.js"):
-        assert c.get(public).status_code == 200, public
+    login = c.get("/login").text
+    for public in (
+        "/static/icon.svg",
+        "/manifest.webmanifest",
+        "/sw.js",
+        *("/" + a for a in re.findall(r'"\./(assets/[^"]+)"', login)),
+    ):
+        assert c.get(public).status_code == 200, public  # the sign-in page needs them
     browser = c.get("/api/now", headers={"Sec-Fetch-Mode": "cors"})
     assert browser.status_code == 401 and "www-authenticate" not in browser.headers  # no pop-up
 
@@ -467,3 +491,15 @@ async def test_parallel_guesses_still_take_turns(skill: Skill, monkeypatch) -> N
         )
         codes = sorted(r.status_code for r in rs)
         assert codes.count(429) >= 1 and set(codes) <= {401, 429}
+
+
+def test_password_and_basic_header_checks_do_not_mix_up(skill: Skill) -> None:
+    """Both go through the same gate with their own expected value."""
+    skill.history = History(":memory:", 15)
+    c = TestClient(
+        create_dashboard(deps(skill, password="s3cret")), base_url="http://localhost:8081"
+    )
+    good = base64.b64encode(b"admin:s3cret").decode()
+    for _ in range(2):
+        assert c.get("/api/now", headers={"Authorization": f"Basic {good}"}).status_code == 200
+        assert c.post("/api/login", json={"password": "s3cret"}).status_code == 200

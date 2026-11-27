@@ -6,7 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
+A new web player built for phones, and the fixes from a second full review. **After updating,
+every browser signs in once more** (sessions changed), and monitors should switch to the new
+API token (`ECHO_TUNES_DASHBOARD_API_TOKEN`).
+
 ### Added
+
+- **A new web player**, designed for phones first: Home, Search, Library and Devices tabs, a
+  mini-player that opens a full-screen *Now Playing* coloured by the cover art, album,
+  playlist and artist pages, a ⋯ menu (and right-click) on every song, light and dark themes,
+  and the administration (Status, Stats, History, Setup, Settings) under *Server*.
+- **A favourite device.** The first time you open it, the app asks where music should play
+  (this phone or one of your Echos) and selects that every time; *Playing on Living room* is
+  always shown and one tap switches. On an Echo, buttons say *Play next*, pause and previous
+  say why they're off, and an idle Echo offers *Play here instead*.
+- When the server can't be reached at all (away from home, or a phone's own "Private DNS"
+  skipping your network's DNS), the app says so with what to check, keeps what's on screen,
+  turns playing off and tries again by itself until the server answers.
+- The install manifest has screenshots and shortcuts (Search, Devices) for a richer install
+  dialog.
 
 - `ECHO_TUNES_DASHBOARD_API_TOKEN`: a bearer token for monitors and scripts (Uptime Kuma,
   Prometheus, Home Assistant). It skips the password checks, so wrong passwords sent by
@@ -16,6 +36,14 @@ All notable changes to this project are documented here. The format follows
   filtered (`device=browser`).
 
 ### Changed
+
+- The installed app's title bar and splash screen use the app's own background (dark or light)
+  instead of the blue accent. `ECHO_TUNES_APP_COLOR` now only changes the accent colour, and
+  is empty (the built-in violet) by default.
+- The web app is built from `web/` (React, TypeScript, Vite, Tailwind CSS, Base UI) into
+  `src/echo_tunes/web/dist`; the wheel and the Docker image still need no Node. Old bookmarks
+  (`#play`, `#now`, `#history`, …) open the matching new page.
+- New landing page, demo and screenshots in the new design.
 
 - The setup page's test play is an action now: `POST /api/test-play`, which needs the
   dashboard password like the player (`GET` answers 403).
@@ -276,7 +304,8 @@ First release.
   `Content-Length` can't be read without limit.
 - CI's secret scan works on pull requests from Dependabot.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.0...v0.2.1

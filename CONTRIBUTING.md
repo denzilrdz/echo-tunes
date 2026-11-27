@@ -5,6 +5,7 @@ Thanks for helping! Bug reports, fixes, docs and new languages for the voice mod
 ## Development setup
 
 You need [uv](https://docs.astral.sh/uv/) and, to run against real YouTube, [Deno](https://deno.com).
+For the web app (`web/`) you also need Node.js, the version in `web/.nvmrc` (`nvm use` in `web/`).
 
 ```bash
 git clone https://github.com/denzilrdz/echo-tunes && cd echo-tunes
@@ -23,6 +24,21 @@ uv run mypy
 uv run pytest
 scripts/check-private-info.sh   # no IP addresses, tailnet names or real IDs (+ .private-ids)
 ```
+
+If you changed the web app (`web/`):
+
+```bash
+cd web
+npm ci                          # exact versions from package-lock.json, no install scripts
+npm run lint && npm run typecheck && npm test
+npm run build                   # then commit src/echo_tunes/web/dist with your change
+npm run size                    # first-load budget
+npm run dev                     # live reload; talks to a dashboard on 127.0.0.1:18081
+```
+
+New npm packages: `npm install --save-exact <pkg>@<version>` with a version that's been out
+for at least a week, and check it doesn't inject `<style>` or inline scripts (the dashboard's
+CSP blocks them; `npm run e2e` catches it).
 
 `check-private-info.sh` also reads an optional `.private-ids` file in the repository root:
 your own values that must never be committed (the ends of your Echos' device IDs, your

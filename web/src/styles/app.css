@@ -1,0 +1,407 @@
+@import "tailwindcss";
+
+/* Inter (variable weight), self-hosted: the CSP allows fonts from this server only. Latin is
+   always enough for the interface; latin-ext loads only when a title needs it. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../../node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Design tokens. Dark first; the light theme is a real one, not an inversion. The accent can
+   be changed by the server (ECHO_TUNES_APP_COLOR) through --accent-custom. */
+:root {
+  --bg: #fafafb;
+  --surface: #ffffff;
+  --surface-2: #f2f2f5;
+  --surface-3: #e9e9ee;
+  --elevated: #ffffff;
+  --border: #e4e4e9;
+  --fg: #111114;
+  --fg-muted: #5b5b66;
+  --fg-subtle: #75757f;
+  --accent: var(--accent-custom, #6d28d9);
+  --accent-fg: var(--accent-custom-fg, #ffffff);
+  --accent-soft: color-mix(in oklch, var(--accent) 12%, transparent);
+  --success: #047857;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --focus-ring: #7c3aed;
+  --art: #e9e3fb;
+  --art-strong: #d9cff8;
+  --shadow-elevated: 0 1px 2px rgb(16 16 24 / 6%), 0 8px 24px rgb(16 16 24 / 8%);
+  --shadow-pop: 0 2px 6px rgb(16 16 24 / 8%), 0 24px 64px rgb(16 16 24 / 18%);
+  --scrim: rgb(10 10 14 / 40%);
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #0b0b0f;
+  --surface: #141419;
+  --surface-2: #1c1c23;
+  --surface-3: #25252e;
+  --elevated: #23232b;
+  --border: #2a2a33;
+  --fg: #f4f4f6;
+  --fg-muted: #a1a1aa;
+  --fg-subtle: #8a8a94;
+  --accent: var(--accent-custom, #a78bfa);
+  --accent-fg: var(--accent-custom-fg, #0b0b0f);
+  --accent-soft: color-mix(in oklch, var(--accent) 18%, transparent);
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --focus-ring: #c4b5fd;
+  --art: #3b2f5e;
+  --art-strong: #4a3b78;
+  --shadow-elevated: 0 0 0 1px rgb(255 255 255 / 4%);
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 6%), 0 24px 64px rgb(0 0 0 / 55%);
+  --scrim: rgb(0 0 0 / 60%);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-elevated: var(--elevated);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-art: var(--art);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --shadow-elevated: var(--shadow-elevated);
+  --shadow-pop: var(--shadow-pop);
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--bg);
+    color: var(--fg);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.45;
+    font-feature-settings: "cv11", "ss01";
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--accent) 35%, transparent);
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  input[type="search"]::-webkit-search-cancel-button {
+    appearance: none;
+  }
+  /* Base UI (with CSPProvider disableStyleElements) expects this class to exist. */
+  .base-ui-disable-scrollbar {
+    scrollbar-width: none;
+  }
+  .base-ui-disable-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .scroll-x {
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface-3) transparent;
+  }
+  /* The artwork-tinted page header: colour from the current cover, fading into the page. */
+  .hero-art {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--art) 85%, var(--bg)) 0,
+      color-mix(in oklch, var(--art) 35%, var(--bg)) 180px,
+      var(--bg) 320px
+    );
+    transition: --art 450ms var(--ease-out);
+  }
+  .glow-art {
+    background:
+      radial-gradient(120% 80% at 50% 0%, color-mix(in oklch, var(--art) 90%, transparent) 0, transparent 70%),
+      var(--bg);
+  }
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--surface-2) 0%,
+      var(--surface-3) 50%,
+      var(--surface-2) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  .equalizer span {
+    animation: eq 900ms ease-in-out infinite alternate;
+    transform-origin: bottom;
+  }
+  .equalizer span:nth-child(2) {
+    animation-delay: -300ms;
+  }
+  .equalizer span:nth-child(3) {
+    animation-delay: -600ms;
+  }
+  .equalizer.paused span {
+    animation-play-state: paused;
+  }
+
+  /* Bottom sheets (Base UI Drawer): slide up, follow the finger, slide away. */
+  .sheet-popup {
+    transform: translateY(var(--drawer-swipe-movement-y, 0px));
+    transition: transform 320ms var(--ease-out);
+    will-change: transform;
+  }
+  .sheet-popup[data-swiping] {
+    transition: none;
+  }
+  .sheet-popup[data-starting-style],
+  .sheet-popup[data-ending-style] {
+    transform: translateY(100%);
+  }
+  .sheet-popup[data-ending-style] {
+    transition-duration: calc(320ms * var(--drawer-swipe-strength, 1));
+  }
+  .sheet-backdrop {
+    opacity: calc(1 - var(--drawer-swipe-progress, 0));
+    transition: opacity 320ms var(--ease-out);
+  }
+  .sheet-backdrop[data-starting-style],
+  .sheet-backdrop[data-ending-style] {
+    opacity: 0;
+  }
+  @media (min-width: 768px) {
+    .sheet-popup.sheet-center {
+      transform: none;
+      transition:
+        opacity 200ms var(--ease-out),
+        scale 200ms var(--ease-out);
+    }
+    .sheet-popup.sheet-center[data-starting-style],
+    .sheet-popup.sheet-center[data-ending-style] {
+      transform: none;
+      opacity: 0;
+      scale: 0.97;
+    }
+  }
+  .pop {
+    transition:
+      opacity 160ms var(--ease-out),
+      scale 160ms var(--ease-out);
+    transform-origin: var(--transform-origin);
+  }
+  .pop[data-starting-style],
+  .pop[data-ending-style] {
+    opacity: 0;
+    scale: 0.96;
+  }
+  /* Seek bar: a native range input, filled up to --pct (set through the CSSOM). */
+  .seek {
+    appearance: none;
+    display: block;
+    width: 100%;
+    height: 24px;
+    background: transparent;
+    cursor: pointer;
+    --fill: var(--fg);
+  }
+  .seek:hover,
+  .seek:focus-visible {
+    --fill: var(--accent);
+  }
+  .seek:focus-visible {
+    outline-offset: 4px;
+    border-radius: 4px;
+  }
+  .seek::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      var(--fill) 0 var(--pct, 0%),
+      color-mix(in oklch, var(--fg) 15%, transparent) var(--pct, 0%) 100%
+    );
+  }
+  .seek::-moz-range-track {
+    height: 4px;
+    border-radius: 9999px;
+    background: color-mix(in oklch, var(--fg) 15%, transparent);
+  }
+  .seek::-moz-range-progress {
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--fill);
+  }
+  .seek::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: 9999px;
+    background: var(--fg);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 30%);
+    opacity: 0;
+    transition: opacity 120ms var(--ease-out);
+  }
+  .seek::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--fg);
+    opacity: 0;
+  }
+  .seek:hover::-webkit-slider-thumb,
+  .seek:focus-visible::-webkit-slider-thumb,
+  .seek:active::-webkit-slider-thumb {
+    opacity: 1;
+  }
+  .seek:hover::-moz-range-thumb,
+  .seek:focus-visible::-moz-range-thumb {
+    opacity: 1;
+  }
+  @media (pointer: coarse) {
+    .seek::-webkit-slider-thumb {
+      opacity: 1;
+    }
+    .seek::-moz-range-thumb {
+      opacity: 1;
+    }
+  }
+  .toast-enter {
+    animation: toast-in 240ms var(--ease-out);
+  }
+  .art-fade {
+    animation: art-in 450ms var(--ease-out);
+  }
+}
+
+@property --art {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #3b2f5e;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@keyframes eq {
+  from {
+    transform: scaleY(0.3);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@keyframes art-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  .sheet-popup,
+  .sheet-backdrop,
+  .pop {
+    transition-property: opacity !important;
+    transition-duration: 120ms !important;
+  }
+  .sheet-popup[data-starting-style],
+  .sheet-popup[data-ending-style] {
+    transform: none;
+    opacity: 0;
+  }
+  .hero-art {
+    transition: none;
+  }
+  .skeleton {
+    animation: none;
+  }
+}

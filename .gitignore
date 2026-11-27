@@ -7,8 +7,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
-dist/
-build/
+# uv build output; src/echo_tunes/web/dist (the built web app) is committed
+/dist/
+/build/
 *.egg-info/
 
 # Local config and data: never commit
@@ -37,3 +38,6 @@ htmlcov/
 .vscode/
 .venv-lowest/
 lowest.txt
+
+# GitHub Pages build (scripts/build_demo.py)
+/site/

@@ -1,52 +1,55 @@
 <!doctype html>
 <!-- The 1280x640 social preview (GitHub "Social preview", og:image). Rendered by
-     scripts/screenshots.py from the dark demo in screenshot mode; not published itself. -->
+     scripts/screenshots.py from the site it builds (fonts/, img/, demo/static/); not published. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>echo-tunes social preview</title>
+<link rel="stylesheet" href="landing.css">
 <style>
-  * { box-sizing: border-box; }
-  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
   body {
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    color: #e6edf3;
     background:
-      radial-gradient(900px 500px at 85% 20%, rgba(68, 147, 248, .28), transparent 60%),
-      radial-gradient(700px 500px at 0% 100%, rgba(210, 153, 34, .14), transparent 60%),
-      #0d1117;
-    display: grid; grid-template-columns: 560px 1fr; align-items: center; padding: 0 0 0 72px;
+      radial-gradient(700px 520px at 78% 30%, rgb(91 33 182 / 55%), transparent 70%),
+      radial-gradient(520px 420px at 100% 100%, rgb(157 23 77 / 35%), transparent 70%),
+      radial-gradient(600px 500px at 0% 0%, rgb(76 29 149 / 30%), transparent 70%),
+      #0b0b0f;
+    color: #f4f4f6;
+    display: grid; grid-template-columns: 560px 1fr; align-items: center; padding-left: 72px;
   }
-  .brand { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 700; }
-  .brand img { width: 56px; height: 56px; }
-  h1 { font-size: 50px; line-height: 1.08; margin: 34px 0 22px; letter-spacing: -.02em; }
-  h1 span { color: #4493f8; }
-  p { font-size: 22px; line-height: 1.45; color: #a7b1bc; margin: 0 0 30px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 10px; max-width: 470px; }
-  .chip { font-size: 17px; padding: 7px 14px; border-radius: 999px; background: #15233a; color: #79b8ff; }
-  .url { margin-top: 34px; font-size: 18px; color: #8d96a0; font-family: ui-monospace, Menlo, monospace; }
-  .shot {
-    width: 640px; height: 360px; border-radius: 18px; overflow: hidden; margin-left: 20px;
-    border: 1px solid #2a313b; box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
-    transform: perspective(1400px) rotateY(-9deg); transform-origin: left center;
-  }
-  .shot iframe { width: 1280px; height: 720px; border: 0; transform: scale(.5); transform-origin: 0 0; }
+  .brand { color: #f4f4f6; font-size: 28px; gap: 14px; }
+  .brand img { width: 52px; height: 52px; border-radius: 13px; }
+  h1 { font-size: 54px; margin: 30px 0 18px; }
+  h1 span { background: linear-gradient(90deg, #a78bfa, #f0abfc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { font-size: 21px; color: #a1a1aa; margin: 0 0 26px; line-height: 1.45; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; max-width: 480px; }
+  .chip { font-size: 15px; font-weight: 650; padding: 7px 14px; border-radius: 999px; background: rgb(167 139 250 / 16%); color: #c4b5fd; }
+  .url { margin-top: 30px; font-size: 16px; color: #8a8a94; font-family: ui-monospace, Menlo, monospace; }
+  .art { position: relative; height: 640px; }
+  .desk { position: absolute; left: 40px; top: 120px; width: 760px; border-radius: 14px; overflow: hidden;
+    border: 1px solid #2a2a33; box-shadow: 0 40px 100px -20px rgb(0 0 0 / 85%); }
+  .desk img, .phone img { display: block; width: 100%; }
+  .phone { position: absolute; left: 0; top: 150px; width: 210px; border-radius: 30px; overflow: hidden;
+    border: 6px solid #1c1c23; background: #1c1c23; box-shadow: 0 40px 90px -10px rgb(0 0 0 / 90%); }
 </style>
 </head>
 <body>
   <div>
-    <div class="brand"><img src="demo/icon.svg" alt=""> echo-tunes</div>
-    <h1>YouTube Music on your <span>Echo</span>, from your own server.</h1>
+    <div class="brand"><img src="demo/static/icon.svg" alt=""> echo-tunes</div>
+    <h1>YouTube Music on your Echo, <span>from your own server.</span></h1>
     <p>An open-source Alexa skill and web player you host yourself. One Docker container, no AWS, no Amazon password.</p>
     <div class="chips">
       <span class="chip">“Alexa, ask my tunes to play …”</span>
       <span class="chip">Web player &amp; phone app</span>
+      <span class="chip">Any Echo</span>
       <span class="chip">Endless radio</span>
-      <span class="chip">Your playlists</span>
       <span class="chip">Self-hosted</span>
     </div>
     <div class="url">github.com/denzilrdz/echo-tunes</div>
   </div>
-  <div class="shot"><iframe src="demo/?shots#play" title="player"></iframe></div>
+  <div class="art">
+    <div class="desk"><img src="img/player-desktop-dark.png" alt=""></div>
+    <div class="phone"><img src="img/player-mobile-dark.png" alt=""></div>
+  </div>
 </body>
 </html>
