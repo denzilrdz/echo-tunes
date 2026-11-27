@@ -406,8 +406,18 @@ def test_a_session_can_last_until_signed_out(skill: Skill) -> None:
     first = c.post("/api/login", json={"password": "s3cret"}).headers["set-cookie"]
     assert f"Max-Age={400 * 86400}" in first
     value = first.split(";")[0]
-    renewed = c.get("/")  # every visit renews the browser's cookie
-    assert renewed.status_code == 200 and renewed.headers["set-cookie"].split(";")[0] == value
+    renewed = c.get("/")  # every visit renews the browser's cookie with a fresh session
+    fresh = renewed.headers["set-cookie"].split(";")[0]
+    assert (
+        renewed.status_code == 200
+        and fresh != value
+        and f"Max-Age={400 * 86400}" in renewed.headers["set-cookie"]
+    )
+    assert c.get("/api/now").status_code == 200  # the new cookie works...
+    old = TestClient(
+        app, base_url="http://localhost:8081", cookies={value.split("=")[0]: value.split("=", 1)[1]}
+    )
+    assert old.get("/api/now").status_code == 401  # ...and the old one was retired
 
 
 async def test_parallel_guesses_still_take_turns(skill: Skill, monkeypatch) -> None:  # type: ignore[no-untyped-def]

@@ -30,8 +30,10 @@ _COOKIE = re.compile(r"([0-9a-f]{32})\.([0-9]{1,12})\.([0-9a-f]{64})", re.ASCII)
 
 
 def session_key(server_secret: bytes, password: str) -> bytes:
-    """The MAC key: the server's secret, with the password mixed in (never the password)."""
-    pw = hashlib.sha256(password.encode()).digest()
+    """The MAC key: the server's secret, with the password mixed in through scrypt (a slow
+    password hash), so neither a cookie nor this key helps anyone guess the password. Computed
+    once at start-up."""
+    pw = hashlib.scrypt(password.encode(), salt=server_secret, n=2**14, r=8, p=1, dklen=32)
     return hmac.new(server_secret, b"session" + pw, hashlib.sha256).digest()
 
 
@@ -111,6 +113,14 @@ class Sessions:
         with self._lock:
             known = self._live.get(sid)
         return known == issued and not self._expired(issued, self._clock())
+
+    def rotate(self, value: str) -> str | None:
+        """Swap a valid cookie for a brand-new session (renewing a never-expiring one), so the
+        cookie we send is always made here, never the one the browser sent."""
+        if not self.valid(value):
+            return None
+        self.revoke(value)
+        return self.create()
 
     def revoke(self, value: str) -> bool:
         """Sign this cookie's session out (it stops working everywhere it was copied to)."""

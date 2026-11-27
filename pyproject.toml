@@ -97,5 +97,9 @@ asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
   "ignore:Using `httpx` with `starlette.testclient`",
   "error::ResourceWarning",
+  # Old starlette/anyio (the lowest-versions CI run) leave a test client's event loop and its
+  # self-pipe unclosed; not our resource, and harmless.
+  "ignore:unclosed event loop:ResourceWarning",
+  "ignore:unclosed <socket.socket fd=[0-9]+, family=1:ResourceWarning",
   "error::pytest.PytestUnraisableExceptionWarning",
 ]

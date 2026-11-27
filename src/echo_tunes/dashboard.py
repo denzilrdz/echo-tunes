@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import hmac
 import html
 import ipaddress
@@ -323,8 +322,10 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     async def index(request: Request) -> Response:
         resp = HTMLResponse(index_html)
         cookie = request.cookies.get(SESSION_COOKIE, "")
-        if sessions and deps.session_days == 0 and cookie and sessions.valid(cookie):
-            set_cookie(resp, request, cookie)  # keep a never-expiring session's cookie fresh
+        if sessions and deps.session_days == 0 and cookie:
+            fresh = sessions.rotate(cookie)  # keep a never-expiring session's cookie fresh
+            if fresh:
+                set_cookie(resp, request, fresh)
         return resp
 
     @app.get("/login", response_class=HTMLResponse)
@@ -726,8 +727,14 @@ class _LoginIn(BaseModel):
     password: str = PydField(min_length=1, max_length=200)
 
 
+# Secrets (password, API token, Basic header) are compared through a keyed MAC with a random
+# per-process key: equal-length outputs make the comparison's timing independent of the
+# secret's length, and nothing derived from it outlives the process.
+_COMPARE_KEY = secrets.token_bytes(32)
+
+
 def _digest(value: str) -> bytes:
-    return hashlib.sha256(value.encode()).digest()
+    return hmac.new(_COMPARE_KEY, value.encode(), "sha256").digest()
 
 
 class BodyLimit:
