@@ -136,6 +136,10 @@ events (skill `testing`). `uv run pytest` must pass before every commit; CI also
 - **Amazon's certificate file names vary**: only the `/echo.api/` folder rule is Amazon's.
   0.2.1-0.2.2 refused every real request with a stricter pattern; test changes to
   `alexa/verify.py` in the developer console's simulator before releasing (skill `release`).
+- **`uv lock --exclude-newer` saves the cutoff in `uv.lock`**, and `uv sync --locked` then
+  fails; `yt-dlp.yml` runs a plain `uv lock` after it to drop it. That workflow opens its
+  PR with `github.token`, which needs the repo setting "Allow GitHub Actions to create and
+  approve pull requests".
 - **Screenshots force the theme with `?theme=light|dark`** (and `?shots` for made-up songs);
   `boot.js` moves the page's `?query` out of the address bar before the hash router starts.
 
