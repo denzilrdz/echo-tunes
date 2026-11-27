@@ -4,9 +4,9 @@
 services:
   echo-tunes:
     # Our own release, by tag. To pin it exactly, add the digest shown on the release page or by
-    # `docker buildx imagetools inspect ghcr.io/denzilrdz/echo-tunes:0.4.0`:
-    # image: ghcr.io/denzilrdz/echo-tunes:0.4.0@sha256:<digest>
-    image: ghcr.io/denzilrdz/echo-tunes:0.4.0
+    # `docker buildx imagetools inspect ghcr.io/denzilrdz/echo-tunes:0.4.1`:
+    # image: ghcr.io/denzilrdz/echo-tunes:0.4.1@sha256:<digest>
+    image: ghcr.io/denzilrdz/echo-tunes:0.4.1
     container_name: echo-tunes
     restart: unless-stopped
     logging: # rotate logs: at most 3 x 10 MB

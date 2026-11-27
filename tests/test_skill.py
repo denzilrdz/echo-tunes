@@ -446,3 +446,19 @@ async def test_unknown_mix_says_so(skill: Skill) -> None:
     assert await cat.mix("jazz mix") is None
     found = await cat.mix("supermix")
     assert found is not None and found.title == "My Supermix"
+
+
+async def test_answering_with_just_the_song_name_plays_it(skill: Skill) -> None:
+    """Owner report: "Alexa, open my tunes" → "What would you like to play?" → "one love by
+    blue" said "Sorry, I didn't get that": a bare song name matched no intent."""
+    from .conftest import envelope
+
+    launch = await skill.handle(envelope({"type": "LaunchRequest"}))
+    assert launch["response"]["shouldEndSession"] is False
+    env = intent("SongNameIntent")
+    env["request"]["intent"]["slots"] = {"song": {"name": "song", "value": "one love by blue"}}
+    resp = await skill.handle(env)
+    await skill.wait_background()
+    assert "Playing Song 1" in resp["response"]["outputSpeech"]["ssml"]
+    assert directives(resp)[0]["playBehavior"] == "REPLACE_ALL"
+    assert list(skill.catalog.searches)[-1] == "one love by blue"  # type: ignore[attr-defined]

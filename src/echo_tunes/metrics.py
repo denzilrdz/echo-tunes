@@ -27,7 +27,8 @@ CONTENT_TYPE = CONTENT_TYPE_LATEST
 
 KNOWN_INTENTS = frozenset(
     {
-        "PlayIntent", "PlayRadioIntent", "PlayLikedIntent", "PlayPlaylistIntent", "PlayMixIntent",
+        "PlayIntent", "PlayRadioIntent", "SongNameIntent",
+        "PlayLikedIntent", "PlayPlaylistIntent", "PlayMixIntent",
         "LikeIntent", "WhatsPlayingIntent", "AMAZON.PauseIntent", "AMAZON.ResumeIntent",
         "AMAZON.NextIntent", "AMAZON.PreviousIntent", "AMAZON.StopIntent", "AMAZON.CancelIntent",
         "AMAZON.HelpIntent", "AMAZON.FallbackIntent", "AMAZON.StartOverIntent",
