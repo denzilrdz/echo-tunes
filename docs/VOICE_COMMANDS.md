@@ -13,6 +13,9 @@ commands work on their own: *"Alexa, next"*.
 | "… play **radio for Tum Hi Ho**"                     | Same as play, but tells you it's starting a radio.          |
 | "… play **something like Coldplay**"                 | Radio based on the best match.                              |
 
+Or in two steps: say **"Alexa, open my tunes"**, and when it asks *"What would you like to play?"*,
+just say the song: **"One Love by Blue"** (no need to say "play").
+
 The queue never runs dry: when it's nearly finished, more songs are added from a radio based on
 the current song. Searches use your `ECHO_TUNES_LOCATION` country for better local results.
 

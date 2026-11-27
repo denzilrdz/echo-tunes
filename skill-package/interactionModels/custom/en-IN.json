@@ -89,6 +89,20 @@
           ]
         },
         {
+          "name": "SongNameIntent",
+          "slots": [
+            {
+              "name": "song",
+              "type": "SongName"
+            }
+          ],
+          "samples": [
+            "{song}",
+            "the song {song}",
+            "how about {song}"
+          ]
+        },
+        {
           "name": "LikeIntent",
           "slots": [],
           "samples": [
@@ -177,6 +191,356 @@
         }
       ],
       "types": [
+        {
+          "name": "SongName",
+          "values": [
+            {
+              "name": {
+                "value": "one love by blue"
+              }
+            },
+            {
+              "name": {
+                "value": "blinding lights"
+              }
+            },
+            {
+              "name": {
+                "value": "shape of you by ed sheeran"
+              }
+            },
+            {
+              "name": {
+                "value": "tum hi ho"
+              }
+            },
+            {
+              "name": {
+                "value": "kesariya"
+              }
+            },
+            {
+              "name": {
+                "value": "despacito"
+              }
+            },
+            {
+              "name": {
+                "value": "bohemian rhapsody by queen"
+              }
+            },
+            {
+              "name": {
+                "value": "perfect by ed sheeran"
+              }
+            },
+            {
+              "name": {
+                "value": "hotel california by the eagles"
+              }
+            },
+            {
+              "name": {
+                "value": "let it be"
+              }
+            },
+            {
+              "name": {
+                "value": "imagine by john lennon"
+              }
+            },
+            {
+              "name": {
+                "value": "hello by adele"
+              }
+            },
+            {
+              "name": {
+                "value": "rolling in the deep"
+              }
+            },
+            {
+              "name": {
+                "value": "someone like you"
+              }
+            },
+            {
+              "name": {
+                "value": "billie jean by michael jackson"
+              }
+            },
+            {
+              "name": {
+                "value": "thriller"
+              }
+            },
+            {
+              "name": {
+                "value": "smells like teen spirit"
+              }
+            },
+            {
+              "name": {
+                "value": "wonderwall by oasis"
+              }
+            },
+            {
+              "name": {
+                "value": "yellow by coldplay"
+              }
+            },
+            {
+              "name": {
+                "value": "fix you"
+              }
+            },
+            {
+              "name": {
+                "value": "viva la vida"
+              }
+            },
+            {
+              "name": {
+                "value": "lose yourself by eminem"
+              }
+            },
+            {
+              "name": {
+                "value": "stay with me by sam smith"
+              }
+            },
+            {
+              "name": {
+                "value": "believer"
+              }
+            },
+            {
+              "name": {
+                "value": "thunder by imagine dragons"
+              }
+            },
+            {
+              "name": {
+                "value": "levitating by dua lipa"
+              }
+            },
+            {
+              "name": {
+                "value": "bad guy by billie eilish"
+              }
+            },
+            {
+              "name": {
+                "value": "as it was by harry styles"
+              }
+            },
+            {
+              "name": {
+                "value": "watermelon sugar"
+              }
+            },
+            {
+              "name": {
+                "value": "dance monkey"
+              }
+            },
+            {
+              "name": {
+                "value": "senorita"
+              }
+            },
+            {
+              "name": {
+                "value": "channa mereya"
+              }
+            },
+            {
+              "name": {
+                "value": "tujh mein rab dikhta hai"
+              }
+            },
+            {
+              "name": {
+                "value": "kal ho naa ho"
+              }
+            },
+            {
+              "name": {
+                "value": "chaiyya chaiyya"
+              }
+            },
+            {
+              "name": {
+                "value": "jai ho by a r rahman"
+              }
+            },
+            {
+              "name": {
+                "value": "agar tum saath ho"
+              }
+            },
+            {
+              "name": {
+                "value": "raabta"
+              }
+            },
+            {
+              "name": {
+                "value": "ae dil hai mushkil"
+              }
+            },
+            {
+              "name": {
+                "value": "pehla nasha"
+              }
+            },
+            {
+              "name": {
+                "value": "lag ja gale"
+              }
+            },
+            {
+              "name": {
+                "value": "tere bina"
+              }
+            },
+            {
+              "name": {
+                "value": "apna bana le"
+              }
+            },
+            {
+              "name": {
+                "value": "pasoori"
+              }
+            },
+            {
+              "name": {
+                "value": "naatu naatu"
+              }
+            },
+            {
+              "name": {
+                "value": "srivalli"
+              }
+            },
+            {
+              "name": {
+                "value": "butta bomma"
+              }
+            },
+            {
+              "name": {
+                "value": "why this kolaveri di"
+              }
+            },
+            {
+              "name": {
+                "value": "kun faya kun"
+              }
+            },
+            {
+              "name": {
+                "value": "dil se re"
+              }
+            },
+            {
+              "name": {
+                "value": "gangnam style"
+              }
+            },
+            {
+              "name": {
+                "value": "dynamite by bts"
+              }
+            },
+            {
+              "name": {
+                "value": "la vie en rose"
+              }
+            },
+            {
+              "name": {
+                "value": "bella ciao"
+              }
+            },
+            {
+              "name": {
+                "value": "hallelujah by leonard cohen"
+              }
+            },
+            {
+              "name": {
+                "value": "nothing else matters by metallica"
+              }
+            },
+            {
+              "name": {
+                "value": "numb by linkin park"
+              }
+            },
+            {
+              "name": {
+                "value": "in the end"
+              }
+            },
+            {
+              "name": {
+                "value": "counting stars"
+              }
+            },
+            {
+              "name": {
+                "value": "see you again"
+              }
+            },
+            {
+              "name": {
+                "value": "uptown funk"
+              }
+            },
+            {
+              "name": {
+                "value": "happy by pharrell"
+              }
+            },
+            {
+              "name": {
+                "value": "shallow by lady gaga"
+              }
+            },
+            {
+              "name": {
+                "value": "all of me by john legend"
+              }
+            },
+            {
+              "name": {
+                "value": "thinking out loud"
+              }
+            },
+            {
+              "name": {
+                "value": "a thousand years"
+              }
+            },
+            {
+              "name": {
+                "value": "photograph"
+              }
+            },
+            {
+              "name": {
+                "value": "faded by alan walker"
+              }
+            },
+            {
+              "name": {
+                "value": "closer by the chainsmokers"
+              }
+            }
+          ]
+        },
         {
           "name": "MixName",
           "values": [

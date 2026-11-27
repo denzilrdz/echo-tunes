@@ -116,7 +116,8 @@ class Skill:
         METRICS.intent(name)
 
         match name:
-            case "PlayIntent" | "PlayRadioIntent":
+            case "PlayIntent" | "PlayRadioIntent" | "SongNameIntent":
+                query = query or _slot(intent, "song")
                 if not query:
                     return r.build(
                         "What should I play?", reprompt="Say a song or artist.", end_session=False

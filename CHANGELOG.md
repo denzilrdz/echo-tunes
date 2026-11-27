@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-27
+
+### Fixed
+
+- Answering "What would you like to play?" with just a song name ("One Love by Blue") said
+  "Sorry, I didn't get that": the voice model only understood a song after "play". A bare song
+  name now plays it. **Update the voice model in the Alexa developer console** (Build → JSON
+  Editor → paste `skill-package/interactionModels/custom/<your locale>.json` → Save → Build).
+
 ## [0.4.0] - 2026-11-27
 
 A new web player built for phones, and the fixes from a second full review. **After updating,
@@ -304,7 +313,8 @@ First release.
   `Content-Length` can't be read without limit.
 - CI's secret scan works on pull requests from Dependabot.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.1...v0.2.2
