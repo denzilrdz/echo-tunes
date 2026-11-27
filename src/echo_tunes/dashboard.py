@@ -211,7 +211,9 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         if deps.password
         else None
     )
-    token_digest = _digest(deps.api_token) if deps.api_token else None
+    token_digest = _token_digest(deps.api_token) if deps.api_token else None
+    # Slow digests of the expected values (the password, the Basic header), worked out once.
+    wanted_digests: dict[str, bytes] = {}
     sessions = (
         Sessions(
             session_key(deps.session_secret, deps.password), deps.session_days, deps.sessions_file
@@ -236,8 +238,12 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         queued += 1
         try:
             async with gate:
-                # Digests of both: the comparison takes as long whatever the lengths.
-                if hmac.compare_digest(_digest(given), _digest(wanted)):
+                # Digests of both: the comparison takes as long whatever the lengths. scrypt runs
+                # in a thread so the server keeps answering while it works.
+                if wanted not in wanted_digests:
+                    wanted_digests[wanted] = await asyncio.to_thread(_digest, wanted)
+                given_digest = await asyncio.to_thread(_digest, given)
+                if hmac.compare_digest(given_digest, wanted_digests[wanted]):
                     return True
                 await asyncio.sleep(WRONG_PASSWORD_DELAY)
                 return False
@@ -273,7 +279,7 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
         basic = request.headers.get("authorization", "")
         if not allowed and token_digest and basic[:7].lower() == "bearer ":
             # Scripts and monitors: a long random token, so no gate and no delay needed.
-            allowed = hmac.compare_digest(_digest(basic[7:].strip()), token_digest)
+            allowed = hmac.compare_digest(_token_digest(basic[7:].strip()), token_digest)
         elif not allowed and basic and expected:
             ok = await password_ok(basic, expected)  # scripts (curl -u)
             if ok is None:
@@ -681,6 +687,12 @@ class _LoginIn(BaseModel):
 # secret's length, nothing derived from it outlives the process, and it's a slow hash, as a
 # password deserves. Light parameters (~10 ms, 4 MB); checks run one at a time anyway.
 _COMPARE_SALT = secrets.token_bytes(16)
+
+
+def _token_digest(value: str) -> bytes:
+    """For the API token: a long random value, not a password, so a fast keyed MAC is right
+    (it runs for every Bearer request, before any rate limit)."""
+    return hmac.new(_COMPARE_SALT, value.encode(), "sha256").digest()
 
 
 def _digest(value: str) -> bytes:

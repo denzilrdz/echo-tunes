@@ -491,3 +491,15 @@ async def test_parallel_guesses_still_take_turns(skill: Skill, monkeypatch) -> N
         )
         codes = sorted(r.status_code for r in rs)
         assert codes.count(429) >= 1 and set(codes) <= {401, 429}
+
+
+def test_password_and_basic_header_checks_do_not_mix_up(skill: Skill) -> None:
+    """Both go through the same gate with their own expected value."""
+    skill.history = History(":memory:", 15)
+    c = TestClient(
+        create_dashboard(deps(skill, password="s3cret")), base_url="http://localhost:8081"
+    )
+    good = base64.b64encode(b"admin:s3cret").decode()
+    for _ in range(2):
+        assert c.get("/api/now", headers={"Authorization": f"Basic {good}"}).status_code == 200
+        assert c.post("/api/login", json={"password": "s3cret"}).status_code == 200
