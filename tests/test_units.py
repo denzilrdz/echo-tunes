@@ -117,3 +117,42 @@ def test_stream_tokens_accept_only_the_canonical_signature() -> None:
     for t in same:
         with pytest.raises(tokens.BadToken):
             tokens.check(SECRET, t)
+
+
+@pytest.mark.parametrize(
+    ("title", "artist", "said"),
+    [
+        (
+            "Kesariya - Film Version | Brahmāstra | Ranbir | Alia | Pritam | Arijit | Amitabh",
+            "SonyMusicIndiaVEVO",
+            "Kesariya - Film Version by SonyMusicIndia",
+        ),
+        ("Blinding Lights (Official Video)", "The Weeknd", "Blinding Lights by The Weeknd"),
+        ("Tum Hi Ho [Full Song] (Lyrical) [HD]", "T-Series", "Tum Hi Ho by T-Series"),
+        (
+            "Kesariya (From Brahmastra)",
+            "Arijit Singh",
+            "Kesariya (From Brahmastra) by Arijit Singh",
+        ),
+        ("Bohemian Rhapsody (Remastered 2011)", "Queen - Topic", "Bohemian Rhapsody by Queen"),
+        ("How to Tie a Tie", "", "How to Tie a Tie"),
+        ("(Official Video)", "x", "(Official Video) by x"),  # nothing left: keep it all
+        ("Lofi • beats to study // relax", "Lofi Girl", "Lofi by Lofi Girl"),
+        ("Song | ", "VEVO", "Song by VEVO"),
+        (
+            "1 A.M Study Session 📚 [lofi hip hop]",
+            "Lofi Girl",
+            "1 A.M Study Session [lofi hip hop] by Lofi Girl",
+        ),
+        ("Kesariya ❤️ (Official Audio)", "x", "Kesariya by x"),
+        ("केसरिया | Brahmastra", "अरिजीत", "केसरिया by अरिजीत"),  # vowel signs stay
+    ],
+)
+def test_alexa_says_a_short_title(title: str, artist: str, said: str) -> None:
+    """Testing 0.5.0-rc.1 on the Alexa simulator: YouTube titles were read out in full,
+    "Kesariya - Film Version | Brahmāstra | Ranbir | Alia | ..." by "SonyMusicIndiaVEVO"."""
+    from echo_tunes.music.catalog import Track
+
+    track = Track("abcdefghijk", title, artist)
+    assert track.spoken == said
+    assert track.title == title  # the player still shows the full title

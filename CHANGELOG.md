@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format follows
   JSON Editor → paste `skill-package/interactionModels/custom/<your locale>.json` → Save →
   Build).
 - The web player's search has a **YouTube** tab with the same results.
+- Alexa says a short title: the part of a YouTube title before the first "|", without tags like
+  "(Official Video)" or emoji, and the channel without "VEVO" or "- Topic". The player still
+  shows the full title.
 - **Sign in to the dashboard with Google**, as well as with the password. List the accounts in
   `ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`. The sign-in page shows a code to approve at
   google.com/device, so it works on a LAN address over plain HTTP. It uses the OAuth client

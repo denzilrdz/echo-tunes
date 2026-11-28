@@ -7,6 +7,7 @@ import asyncio
 import difflib
 import logging
 import re
+import unicodedata
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -34,7 +35,9 @@ class Track:
 
     @property
     def spoken(self) -> str:
-        return f"{self.title} by {self.artist}" if self.artist else self.title
+        """What Alexa says: a short title and artist (the player shows the full title)."""
+        title, artist = spoken_title(self.title), spoken_artist(self.artist)
+        return f"{title} by {artist}" if artist else title
 
     def to_dict(self) -> dict[str, Any]:
         return {"v": self.video_id, "t": self.title, "a": self.artist, "d": self.duration}
@@ -67,6 +70,40 @@ class Catalog(Protocol):
     async def mix(self, name: str) -> Collection | None: ...
     async def like(self, video_id: str) -> None: ...
     async def played(self, video_id: str) -> None: ...
+
+
+# YouTube video titles are written for a screen: "Kesariya - Film Version | Brahmastra | Ranbir
+# | Alia | Pritam" or "Song (Official Music Video) [4K]". Read aloud, everything after the first
+# separator and the bracketed tags are noise.
+_TITLE_SPLIT = re.compile(r"\s+(?:\||‖|//|•|·)\s+")
+_TAGS = re.compile(
+    r"\s*[(\[](?:[^)\]]*\b(?:official|video|audio|lyrics?|lyrical|visuali[sz]er|hd|hq|4k|"
+    r"remaster(?:ed)?|full song|music video|mv)\b[^)\]]*)[)\]]",
+    re.IGNORECASE,
+)
+_CHANNEL_SUFFIX = re.compile(r"(?:\s*-\s*topic|vevo|\s+official)$", re.IGNORECASE)
+
+
+def spoken_title(title: str) -> str:
+    """The part of a title worth saying aloud; the full title when nothing is left."""
+    short = _TITLE_SPLIT.split(title, maxsplit=1)[0]
+    short = _TAGS.sub("", short)
+    # Emoji and other pictographs ("Study Session 📚") mean nothing read aloud.
+    # Variation selectors and joiners only glue emoji together (not all combining marks: Hindi
+    # vowel signs are combining marks too).
+    short = "".join(
+        " " if unicodedata.category(c) == "So" else c
+        for c in short
+        if c not in "\ufe0e\ufe0f\u200d"
+    )
+    short = " ".join(short.split())
+    return short or title
+
+
+def spoken_artist(artist: str) -> str:
+    """A channel name as people say it: "SonyMusicIndiaVEVO" -> "SonyMusicIndia"."""
+    short = _CHANNEL_SUFFIX.sub("", artist.strip())
+    return short.strip() or artist
 
 
 def _artists(item: dict[str, Any]) -> str:
