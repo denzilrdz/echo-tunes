@@ -1,6 +1,6 @@
 [project]
 name = "echo-tunes"
-version = "0.4.1"
+version = "0.5.0"
 description = "Self-hosted Alexa skill that plays YouTube Music on your Echo. One Docker container, no AWS, no Amazon password."
 readme = "README.md"
 license = "MIT"
