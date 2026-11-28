@@ -15,7 +15,7 @@ import { CollectionPage, LibraryPage, MoodPage } from "./routes/library";
 import { SearchPage, type SearchType } from "./routes/search";
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
-const TYPES = new Set(["all", "song", "album", "artist", "playlist"]);
+const TYPES = new Set(["all", "song", "album", "artist", "playlist", "video"]);
 
 const root = createRootRoute({ component: AppShell });
 

@@ -30,6 +30,7 @@ def song(n: int) -> Track:
 class FakeCatalog:
     def __init__(self, signed_in: bool = False) -> None:
         self.searches: deque[str] = deque(maxlen=100)
+        self.video_searches: deque[str] = deque(maxlen=100)
         self.radios: deque[str] = deque(maxlen=100)
         self.liked: deque[str] = deque(maxlen=100)
         self.history: deque[str] = deque(maxlen=100)
@@ -74,6 +75,11 @@ class FakeCatalog:
         self._maybe_fail("search_song")
         self.searches.append(query)
         return None if "nothing" in query else song(1)
+
+    async def search_video(self, query: str) -> Track | None:
+        self._maybe_fail("search_video")
+        self.video_searches.append(query)
+        return None if "nothing" in query else Track("ytvid000001", "A video", "A channel", 300)
 
     async def radio(self, video_id: str, limit: int) -> list[Track]:
         self._maybe_fail("radio")

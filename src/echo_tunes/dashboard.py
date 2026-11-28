@@ -5,7 +5,8 @@ port that Amazon and the Echo use. Keep this port private: bind it to localhost 
 or publish it only inside your LAN or a VPN (WireGuard, Tailscale Serve, ...). An optional password
 (``ECHO_TUNES_DASHBOARD_PASSWORD``: a sign-in page for browsers, HTTP Basic with user ``admin``
 for scripts) adds a second lock; ``ECHO_TUNES_DASHBOARD_API_TOKEN`` is a bearer token for
-monitors that skips the password checks.
+monitors that skips the password checks. Browsers can also sign in with a Google account
+listed in ``ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`` (``google_login.py``); the password stays.
 
 Reading (now playing, history, browsing YouTube Music) works without a password on a private
 network. Anything that changes something (play, queue, skip, clear history) is a POST that
@@ -38,11 +39,13 @@ from pydantic import Field as PydField
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from echo_tunes import __version__
+from echo_tunes.google_login import GoogleLogin, GoogleLoginError
 from echo_tunes.health import memory_mb
 from echo_tunes.history import History
 from echo_tunes.metrics import CONTENT_TYPE, METRICS
 from echo_tunes.music import browse
 from echo_tunes.music.catalog import NotSignedIn, Track
+from echo_tunes.music.resolver import Busy
 from echo_tunes.player.state import PlayerState
 from echo_tunes.player.store import StateStore
 from echo_tunes.sessions import Sessions, session_key
@@ -82,6 +85,8 @@ class DashboardDeps:
     # Signs session cookies (with the password mixed in); the data folder's session.key.
     session_secret: bytes = field(default_factory=lambda: secrets.token_bytes(32))
     sessions_file: Path | None = None  # signed-in sessions (None: kept in memory only)
+    # Sign in with an allowed Google account as well (only offered when a password is set).
+    google: GoogleLogin | None = None
     public_origin: str = ""
     allowed_hosts: frozenset[str] = frozenset()  # beyond IPs, localhost and the public name
     # Setup page: run the checks, and give the browser a test stream link.
@@ -216,9 +221,13 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     api_token = deps.api_token.encode() if deps.api_token else None
     # Slow digests of the expected values (the password, the Basic header), worked out once.
     wanted_digests: dict[str, bytes] = {}
+    google = deps.google if deps.password else None
     sessions = (
         Sessions(
-            session_key(deps.session_secret, deps.password), deps.session_days, deps.sessions_file
+            session_key(deps.session_secret, deps.password),
+            deps.session_days,
+            deps.sessions_file,
+            google_emails=google.emails if google is not None else frozenset(),
         )
         if deps.password
         else None
@@ -355,6 +364,37 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             secure=_https(request),
             path="/",
         )
+
+    @app.get("/api/login/options")
+    async def login_options() -> dict[str, bool]:
+        """What the sign-in page offers (no secrets: just whether Google sign-in is on)."""
+        return {"google": google is not None}
+
+    @app.post("/api/login/google")
+    async def google_start() -> dict[str, Any]:
+        """Start a Google sign-in: a code to approve at google.com/device."""
+        if google is None:
+            raise HTTPException(404, "Google sign-in is off.")
+        try:
+            return await google.start()
+        except GoogleLoginError as exc:
+            raise HTTPException(exc.status, exc.message) from exc
+
+    @app.post("/api/login/google/poll")
+    async def google_poll(body: _GoogleFlowIn, request: Request) -> Response:
+        """Has the code been approved? On success the browser gets a session cookie."""
+        if google is None:
+            raise HTTPException(404, "Google sign-in is off.")
+        try:
+            email = await google.poll(body.flow)
+        except GoogleLoginError as exc:
+            raise HTTPException(exc.status, exc.message) from exc
+        if email is None:
+            return JSONResponse({"status": "pending"}, status_code=202)
+        resp = JSONResponse({"status": "ok"})
+        assert sessions is not None
+        set_cookie(resp, request, sessions.create(email=email))
+        return resp
 
     @app.post("/api/logout")
     async def logout(request: Request) -> Response:
@@ -548,11 +588,13 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
             return await call
         except NotSignedIn as exc:
             raise HTTPException(409, "Sign in to YouTube Music first: echo-tunes login") from exc
+        except Busy as exc:
+            raise HTTPException(503, "Too many YouTube searches at once; try again.") from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except Exception as exc:
             METRICS.youtube_errors.inc()
-            raise HTTPException(502, "YouTube Music didn't answer; try again.") from exc
+            raise HTTPException(502, "YouTube didn't answer; try again.") from exc
 
     def items(xs: list[browse.Item]) -> list[dict[str, Any]]:
         return [x.to_dict() for x in xs]
@@ -586,7 +628,7 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
     @app.get("/api/search")
     async def search(
         q: str = Query(min_length=1, max_length=100),
-        kind: browse.Kind = "song",
+        kind: browse.SearchKind = "song",
     ) -> dict[str, Any]:
         found = await youtube(need(deps.catalog).search_items(q.strip(), kind))
         return {"kind": kind, "items": items(found)}
@@ -684,6 +726,10 @@ class _LoginIn(BaseModel):
     password: str = PydField(min_length=1, max_length=200)
 
 
+class _GoogleFlowIn(BaseModel):
+    flow: str = PydField(min_length=20, max_length=100)
+
+
 # Secrets (password, API token, Basic header) are compared through scrypt with a random
 # per-process salt: equal-length outputs make the comparison's timing independent of the
 # secret's length, nothing derived from it outlives the process, and it's a slow hash, as a
@@ -729,9 +775,15 @@ class BodyLimit:
 
 def _public(path: str) -> bool:
     """What the login page and an app install need before signing in (no data in any of it)."""
-    return path in ("/login", "/api/login", "/manifest.webmanifest", "/sw.js") or (
-        path.startswith(("/static/", "/assets/"))
-    )
+    return path in (
+        "/login",
+        "/api/login",
+        "/api/login/options",
+        "/api/login/google",
+        "/api/login/google/poll",
+        "/manifest.webmanifest",
+        "/sw.js",
+    ) or (path.startswith(("/static/", "/assets/")))
 
 
 # --- the web app's pages and install manifest ---------------------------------------------

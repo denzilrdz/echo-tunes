@@ -57,12 +57,13 @@ no Amazon password.
 | **One container**      | A single Docker image (amd64 and arm64: PCs, cloud servers, Raspberry Pi). No AWS Lambda, no database server.     |
 | **No Amazon password** | You create a private skill in the free Alexa developer console. echo-tunes never sees your Amazon login.          |
 | **Your own music**     | Optional Google sign-in: "play my liked songs", your playlists, your mixes, "like this song".         |
+| **All of YouTube too** | "Play … on YouTube" searches all of YouTube (covers, live sets, talks) instead of just YouTube Music. No API key. |
 | **Endless radio**      | Every song starts a YouTube Music radio, and the queue tops itself up so the music doesn't stop.                  |
 | **Fast song changes**  | The next song's audio is prepared while the current one plays.                                                   |
 | **Runs anywhere**      | Any Docker host: a cloud server with a public IP, or a home server behind a tunnel. No vendor lock-in; ready examples for Caddy, Cloudflare Tunnel and Tailscale Funnel. |
 | **Secure by default**  | Every request's Amazon signature and your skill ID are checked; audio links are signed and expire.                |
 | **Flat memory**        | Bounded caches, streamed audio and recycled worker processes: memory doesn't creep up over weeks of uptime.       |
-| **Web player**         | Search songs, albums, artists and playlists; browse charts, moods and your library. Play in the browser or queue on an Echo. [Demo](https://denzilrdz.github.io/echo-tunes/demo/) |
+| **Web player**         | Search songs, albums, artists, playlists and all of YouTube; browse charts, moods and your library. Play in the browser or queue on an Echo. [Demo](https://denzilrdz.github.io/echo-tunes/demo/) |
 | **Your favourite speaker** | Pick where music plays (an Echo or this phone) once; it's selected every time you open the app, and one tap switches it. |
 | **Phone app**          | Install the dashboard from your browser (it's a PWA): own icon, full screen, lock-screen controls, sign in once per device. Name, colour and icon are settings. |
 | **Private dashboard**  | Now playing and up next per Echo, 15-day play history (clear it any time), stats, a setup checklist and a "test play" button. |
@@ -165,7 +166,8 @@ See [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
 
 **6. Open the dashboard and player** on the private port, `http://localhost:8081` on the
 server (or over an SSH tunnel, your LAN or a VPN; never the internet). Set
-`ECHO_TUNES_DASHBOARD_PASSWORD` to play and queue songs from it, and open it over HTTPS to
+`ECHO_TUNES_DASHBOARD_PASSWORD` to play and queue songs from it (and optionally
+`ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS` to sign in with Google too), and open it over HTTPS to
 install it on your phone. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
 
 ## How it works
@@ -217,6 +219,7 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_DASHBOARD_HOST`            | `127.0.0.1` | Address the dashboard listens on (`0.0.0.0` in the Docker image, so its port can be published privately). |
 | `ECHO_TUNES_DASHBOARD_HOSTS`           | (none)     | Extra host names you open the dashboard by, comma-separated, no port (e.g. `music-dash.lan`). |
 | `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Password for the dashboard (user `admin`); needed to play, queue and clear history from it. |
+| `ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`   | (none)     | Google accounts that may also sign in to the dashboard, comma-separated. Needs the password and the OAuth client from `echo-tunes login`. |
 | `ECHO_TUNES_DASHBOARD_SESSION_DAYS`    | `180`      | Days a phone or browser stays signed in to the dashboard (`0` = until you sign out). |
 | `ECHO_TUNES_DASHBOARD_API_TOKEN`       | (none)     | Bearer token (32+ random characters) for monitors and scripts; skips the password checks ([how](docs/MONITORING.md)). |
 | `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |

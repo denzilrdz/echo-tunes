@@ -16,6 +16,9 @@ from echo_tunes.tokens import is_video_id
 
 Kind = Literal["song", "album", "playlist", "artist"]
 KINDS: tuple[Kind, ...] = ("song", "album", "playlist", "artist")
+# What the player can search for: YouTube Music's kinds, or "video" for all of YouTube (its
+# results are songs: a video plays like any other song).
+SearchKind = Literal["song", "album", "playlist", "artist", "video"]
 SEARCH_FILTERS: dict[str, str] = {
     "song": "songs",
     "album": "albums",
@@ -76,7 +79,7 @@ def _artists(item: dict[str, Any]) -> str:
     return ", ".join(names[:2])
 
 
-def _text(value: Any, limit: int = 200) -> str:
+def text(value: Any, limit: int = 200) -> str:
     return " ".join(str(value or "").split())[:limit]
 
 
@@ -94,8 +97,8 @@ def parse(raw: dict[str, Any]) -> Item | None:
         return Item(
             "song",
             str(vid),
-            _text(raw.get("title")) or "Unknown",
-            _artists(raw) or _text(album),
+            text(raw.get("title")) or "Unknown",
+            _artists(raw) or text(album),
             image(thumbs),
             raw.get("duration_seconds") or raw.get("lengthSeconds"),
         )
@@ -103,21 +106,21 @@ def parse(raw: dict[str, Any]) -> Item | None:
         bid = str(raw.get("browseId") or "")
         if not is_list_id(bid):
             return None
-        name = _text(raw.get("artist") or raw.get("title"))
+        name = text(raw.get("artist") or raw.get("title"))
         return Item("artist", bid, name, "Artist", image(thumbs))
     if kind == "album" or str(raw.get("browseId") or "").startswith("MPRE"):
         bid = str(raw.get("browseId") or "")
         if not is_list_id(bid):
             return None
-        sub = " · ".join(x for x in (_artists(raw), _text(raw.get("year"))) if x)
-        return Item("album", bid, _text(raw.get("title")), sub or "Album", image(thumbs))
+        sub = " · ".join(x for x in (_artists(raw), text(raw.get("year"))) if x)
+        return Item("album", bid, text(raw.get("title")), sub or "Album", image(thumbs))
     pid = str(raw.get("playlistId") or raw.get("browseId") or "")
     pid = pid.removeprefix("VL")  # search returns the browse form "VL<playlist ID>"
     if pid and is_list_id(pid):
-        sub = _text(raw.get("author") or raw.get("description"), 80)
+        sub = text(raw.get("author") or raw.get("description"), 80)
         if isinstance(raw.get("author"), list):
-            sub = ", ".join(_text(a.get("name")) for a in raw["author"] if isinstance(a, dict))
-        return Item("playlist", pid, _text(raw.get("title")), sub or "Playlist", image(thumbs))
+            sub = ", ".join(text(a.get("name")) for a in raw["author"] if isinstance(a, dict))
+        return Item("playlist", pid, text(raw.get("title")), sub or "Playlist", image(thumbs))
     return None
 
 
@@ -140,7 +143,7 @@ def sections(home: Any, limit: int = 8) -> list[dict[str, Any]]:
     for section in home or []:
         items = parse_all((section or {}).get("contents"), 20)
         if items:
-            out.append({"title": _text(section.get("title"), 80), "items": items})
+            out.append({"title": text(section.get("title"), 80), "items": items})
         if len(out) >= limit:
             break
     return out

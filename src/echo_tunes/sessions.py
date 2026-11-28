@@ -7,6 +7,11 @@ password signs every device out. The list of live session IDs (``sessions.json``
 ``MAX_SESSIONS``) makes signing out real: a signed-out cookie stops working even if it was
 copied. The issue time is checked against the *current* ``DASHBOARD_SESSION_DAYS``, so
 lowering it takes effect for cookies already handed out.
+
+A session started with "Sign in with Google" also records the account's email, and only counts
+while that email is still in ``DASHBOARD_GOOGLE_EMAILS``: taking someone off the list signs
+them out. Password sessions record none. In ``sessions.json`` a password session is
+``id: issued`` and a Google one ``id: [issued, email]``.
 """
 
 from __future__ import annotations
@@ -45,16 +50,19 @@ class Sessions:
         path: Path | None = None,
         clock: Callable[[], float] = time.time,
         max_sessions: int = MAX_SESSIONS,
+        google_emails: frozenset[str] = frozenset(),
     ) -> None:
         self._key, self.days, self._path, self._clock = key, days, path, clock
         self._max = max_sessions
+        self._emails = frozenset(e.lower() for e in google_emails)
         self._lock = threading.Lock()
-        self._live: dict[str, int] = {}  # session ID -> issued (unix seconds)
+        # session ID -> (issued, unix seconds; email for a Google sign-in, "" for the password)
+        self._live: dict[str, tuple[int, str]] = {}
         if path is not None and path.exists():
             try:
                 raw = json.loads(path.read_text())
                 self._live = {
-                    str(k): int(v)
+                    str(k): _entry(v)
                     for k, v in dict(raw).items()
                     if isinstance(k, str) and re.fullmatch(r"[0-9a-f]{32}", k)
                 }
@@ -70,11 +78,18 @@ class Sessions:
     def _expired(self, issued: int, now: float) -> bool:
         return bool(self.days) and issued + self.days * 86400 < now
 
+    def _allowed(self, email: str) -> bool:
+        return not email or email in self._emails
+
     def _prune(self) -> None:
         now = self._clock()
-        self._live = {k: v for k, v in self._live.items() if not self._expired(v, now)}
+        self._live = {
+            k: (issued, email)
+            for k, (issued, email) in self._live.items()
+            if not self._expired(issued, now) and self._allowed(email)
+        }
         if len(self._live) > self._max:
-            newest = sorted(self._live.items(), key=lambda kv: kv[1])[-self._max :]
+            newest = sorted(self._live.items(), key=lambda kv: kv[1][0])[-self._max :]
             self._live = dict(newest)
 
     def _save(self) -> None:
@@ -83,14 +98,15 @@ class Sessions:
         tmp = self._path.with_suffix(".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
-            json.dump(self._live, f)
+            json.dump({k: [i, e] if e else i for k, (i, e) in self._live.items()}, f)
         tmp.replace(self._path)
 
-    def create(self) -> str:
-        """A new signed-in session; returns the cookie value."""
+    def create(self, email: str = "") -> str:
+        """A new signed-in session (``email``: the Google account, for a Google sign-in);
+        returns the cookie value."""
         sid, issued = secrets.token_hex(16), int(self._clock())
         with self._lock:
-            self._live[sid] = issued
+            self._live[sid] = (issued, email.lower())
             self._prune()
             self._save()
         return f"{sid}.{issued}.{self._mac(sid, issued)}"
@@ -112,7 +128,12 @@ class Sessions:
         sid, issued = parsed
         with self._lock:
             known = self._live.get(sid)
-        return known == issued and not self._expired(issued, self._clock())
+        return (
+            known is not None
+            and known[0] == issued
+            and self._allowed(known[1])
+            and not self._expired(issued, self._clock())
+        )
 
     def renew(self, value: str) -> str | None:
         """Re-issue a valid session's cookie with a new issue time (renewing a never-expiring
@@ -125,9 +146,12 @@ class Sessions:
         now = int(self._clock())
         with self._lock:
             own = next((k for k in self._live if hmac.compare_digest(k, sid)), None)
-            if own is None or self._live[own] != issued or self._expired(issued, now):
+            if own is None:
                 return None
-            self._live[own] = now
+            known_issued, email = self._live[own]
+            if known_issued != issued or not self._allowed(email) or self._expired(issued, now):
+                return None
+            self._live[own] = (now, email)
             self._save()
         return f"{own}.{now}.{self._mac(own, now)}"
 
@@ -153,3 +177,12 @@ class Sessions:
     def __len__(self) -> int:
         with self._lock:
             return len(self._live)
+
+
+def _entry(value: object) -> tuple[int, str]:
+    """One saved session: ``issued`` (password) or ``[issued, email]`` (Google)."""
+    if isinstance(value, list) and len(value) == 2 and isinstance(value[1], str):
+        return int(value[0]), value[1].lower()
+    if isinstance(value, (int, str)) and not isinstance(value, bool):
+        return int(value), ""
+    raise TypeError("not a session")

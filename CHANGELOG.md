@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Play anything on YouTube, not just YouTube Music.** Say *"Alexa, ask my tunes to play
+  Kesariya on YouTube"* (or *"search YouTube for …"*) to play the top YouTube result: covers,
+  live sets, fan cams, talks and podcasts. Plain "play …" still searches YouTube Music. Search
+  runs in the yt-dlp worker processes, so it needs no API key. Live streams are skipped because
+  the Echo can't play them. **Update the voice model in the Alexa developer console** (Build →
+  JSON Editor → paste `skill-package/interactionModels/custom/<your locale>.json` → Save →
+  Build).
+- The web player's search has a **YouTube** tab with the same results.
+- **Sign in to the dashboard with Google**, as well as with the password. List the accounts in
+  `ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`. The sign-in page shows a code to approve at
+  google.com/device, so it works on a LAN address over plain HTTP. It uses the OAuth client
+  from `echo-tunes login` and asks only for the email address.
+
 ## [0.4.1] - 2026-11-27
 
 ### Fixed

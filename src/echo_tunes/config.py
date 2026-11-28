@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     dashboard_password: SecretStr | None = Field(
         default=None, description="Optional password for the dashboard and /metrics (user: admin)."
     )
+    # Google accounts that may sign in to the dashboard (as well as the password), e.g.
+    # "you@gmail.com,partner@gmail.com". Uses the OAuth client of `echo-tunes login`.
+    dashboard_google_emails: Annotated[list[str], NoDecode] = Field(default_factory=list)
     # For scripts and monitors (Uptime Kuma, Prometheus): sent as "Authorization: Bearer
     # <token>", it skips the password checks (and their queue) entirely. Long and random.
     dashboard_api_token: SecretStr | None = Field(
@@ -188,6 +191,26 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f"{h!r} is not a bare host name (no port, scheme or path), e.g. music-dash.lan"
                 )
+        return v
+
+    @field_validator("dashboard_google_emails", mode="before")
+    @classmethod
+    def _split_emails(cls, v: object) -> object:
+        if isinstance(v, str):
+            return [e.strip().lower() for e in v.split(",") if e.strip()]
+        return v
+
+    @field_validator("dashboard_google_emails")
+    @classmethod
+    def _plain_emails(cls, v: list[str], info: Any) -> list[str]:
+        if v and not info.data.get("dashboard_password"):
+            raise ValueError(
+                "Google sign-in comes with the password, not instead of it: "
+                "set ECHO_TUNES_DASHBOARD_PASSWORD too"
+            )
+        for e in v:
+            if not re.fullmatch(r"[^@\s,]+@[^@\s,]+\.[a-z]{2,}", e):
+                raise ValueError(f"{e!r} is not an email address, e.g. you@gmail.com")
         return v
 
     @field_validator("device_names", mode="before")

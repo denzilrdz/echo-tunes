@@ -1,4 +1,5 @@
-"""Runs inside resolver worker processes: turns a YouTube video ID into a direct audio link.
+"""Runs inside resolver worker processes: turns a YouTube video ID into a direct audio link,
+and searches YouTube itself (not just YouTube Music) without an API key.
 
 yt-dlp is large and keeps internal state (player scripts, caches) that grows over time, so it
 never runs in the main server process. Workers are recycled after a fixed number of jobs (see
@@ -14,6 +15,7 @@ from typing import Any
 
 # One YoutubeDL per worker process, reused across jobs so the player script is fetched once.
 _ydl: Any = None
+_search_ydl: Any = None  # a second one for searches: flat results, no formats
 
 # Echo devices play AAC in an MP4 container (YouTube format 140, ~128 kbps); Opus/WebM won't play.
 _FORMAT = "140/bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]"
@@ -59,6 +61,28 @@ def resolve(
         "mime": "audio/mp4",
         "expires": expires,
     }
+
+
+def search(query: str, limit: int) -> list[dict[str, Any]]:
+    """YouTube's own search results (flat: no audio links, one request). Only plain data
+    crosses back to the server process; it validates every field (see music/youtube.py)."""
+    global _search_ydl
+    if _search_ydl is None:
+        import yt_dlp
+
+        _search_ydl = yt_dlp.YoutubeDL(
+            {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": True,
+                "skip_download": True,
+                "socket_timeout": 10,
+                "extractor_retries": 1,
+            }
+        )
+    info = _search_ydl.extract_info(f"ytsearch{int(limit)}:{query}", download=False)
+    keys = ("id", "title", "channel", "uploader", "duration", "live_status", "thumbnails")
+    return [{k: e.get(k) for k in keys} for e in (info or {}).get("entries") or [] if e]
 
 
 def version() -> str:

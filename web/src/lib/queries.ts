@@ -95,6 +95,9 @@ export const useSearch = (q: string, kind: string) =>
     queryKey: ["search", kind, q],
     queryFn: () => get<{ kind: string; items: Item[] }>(`/api/search${qs({ q, kind })}`),
     enabled: q.length > 0,
+    // A YouTube search runs in a server worker; a timed-out one restarts the workers, so a
+    // failure isn't retried automatically (the page offers "Try again").
+    ...(kind === "video" ? { retry: false } : {}),
     staleTime: 5 * 60_000,
     placeholderData: (prev) => prev,
   });

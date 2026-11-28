@@ -1,4 +1,5 @@
-"""Search, radio and (when signed in) your library, from YouTube Music via ytmusicapi."""
+"""Search, radio and (when signed in) your library, from YouTube Music via ytmusicapi; and
+search across all of YouTube (``music/youtube.py``) for "play ... on YouTube"."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar, cast
 
 from echo_tunes.cache import BoundedTTLCache
-from echo_tunes.music import browse
+from echo_tunes.music import browse, youtube
 from echo_tunes.tokens import is_video_id
 
 log = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class Catalog(Protocol):
     @property
     def signed_in(self) -> bool: ...
     async def search_song(self, query: str) -> Track | None: ...
+    async def search_video(self, query: str) -> Track | None: ...
     async def radio(self, video_id: str, limit: int) -> list[Track]: ...
     async def liked_songs(self) -> Collection: ...
     async def playlist(self, name: str) -> Collection | None: ...
@@ -84,6 +86,10 @@ def _track(item: dict[str, Any]) -> Track | None:
     )
 
 
+def _item_track(item: browse.Item) -> Track:
+    return Track(item.id, item.title, item.subtitle, item.duration)
+
+
 def _tracks(items: list[dict[str, Any]] | None) -> list[Track]:
     return [t for t in map(_track, items or []) if t]
 
@@ -106,8 +112,16 @@ def best_match(wanted: str, names: list[str], cutoff: float = 0.55) -> int | Non
 
 
 class YTMusicCatalog:
-    def __init__(self, client: Any, signed_in: bool, *, send_history: bool = False) -> None:
+    def __init__(
+        self,
+        client: Any,
+        signed_in: bool,
+        *,
+        send_history: bool = False,
+        youtube: youtube.YouTubeSearch | None = None,
+    ) -> None:
         self._yt = client
+        self._youtube = youtube
         self._signed_in = signed_in
         self._send_history = send_history and signed_in
         # Its own small thread pool: a slow YouTube never starves other work, and calls run
@@ -132,6 +146,13 @@ class YTMusicCatalog:
         if track is not None:
             self._searches.set(key, track)
         return track
+
+    async def search_video(self, query: str) -> Track | None:
+        """The top result of a search on YouTube itself (any video, not only music)."""
+        if self._youtube is None:
+            return None
+        found = await self._youtube.search(query)
+        return next((_item_track(i) for i in found), None)
 
     async def radio(self, video_id: str, limit: int) -> list[Track]:
         data = await self._call("get_watch_playlist", videoId=video_id, radio=True, limit=limit)
@@ -193,7 +214,9 @@ class YTMusicCatalog:
             log.info("couldn't add %s to history: %s", video_id, exc)
 
     # --- browsing, for the dashboard's player -------------------------------------------------
-    async def search_items(self, query: str, kind: browse.Kind) -> list[browse.Item]:
+    async def search_items(self, query: str, kind: browse.SearchKind) -> list[browse.Item]:
+        if kind == "video":
+            return await self._youtube.search(query) if self._youtube else []
         key = f"search:{kind}:{normalise(query)}"
         return await self._browse(
             key,

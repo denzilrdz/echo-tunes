@@ -462,3 +462,48 @@ async def test_answering_with_just_the_song_name_plays_it(skill: Skill) -> None:
     assert "Playing Song 1" in resp["response"]["outputSpeech"]["ssml"]
     assert directives(resp)[0]["playBehavior"] == "REPLACE_ALL"
     assert list(skill.catalog.searches)[-1] == "one love by blue"  # type: ignore[attr-defined]
+
+
+# --- all of YouTube ----------------------------------------------------------------------------
+async def test_youtube_intent_searches_youtube_not_youtube_music(skill: Skill) -> None:
+    resp = await skill.handle(intent("PlayYouTubeIntent", "how to tie a tie"))
+    await skill.wait_background()
+    [play] = directives(resp)
+    assert play["playBehavior"] == "REPLACE_ALL"
+    assert "ytvid000001" in play["audioItem"]["stream"]["token"]
+    assert "Playing A video by A channel from YouTube" in resp["response"]["outputSpeech"]["ssml"]
+    assert list(skill.catalog.video_searches) == ["how to tie a tie"]  # type: ignore[attr-defined]
+    assert not skill.catalog.searches  # type: ignore[attr-defined]
+    state = skill.store.get(DEVICE)
+    assert state.source == 'On YouTube: "how to tie a tie"'
+    assert len(state.tracks) > 1  # radio follows, as for any song
+
+
+async def test_on_youtube_said_to_the_play_intent_still_searches_youtube(skill: Skill) -> None:
+    # Alexa's catch-all slot often takes the whole phrase: "play {kesariya on youtube}".
+    for said in ("kesariya on youtube", "kesariya from You Tube", "kesariya off the youtube"):
+        await skill.handle(intent("PlayIntent", said))
+        await skill.wait_background()
+    assert list(skill.catalog.video_searches) == ["kesariya"] * 3  # type: ignore[attr-defined]
+    assert not skill.catalog.searches  # type: ignore[attr-defined]
+
+
+async def test_youtube_in_a_song_name_is_left_alone(skill: Skill) -> None:
+    await start(skill, "youtube rewind song")
+    assert list(skill.catalog.searches) == ["youtube rewind song"]  # type: ignore[attr-defined]
+    assert not skill.catalog.video_searches  # type: ignore[attr-defined]
+
+
+async def test_only_on_youtube_asks_what_to_play(skill: Skill) -> None:
+    resp = await skill.handle(intent("PlayYouTubeIntent", "on youtube"))
+    assert resp["response"]["shouldEndSession"] is False
+    assert not directives(resp)
+
+
+async def test_youtube_not_found_and_unreachable(skill: Skill) -> None:
+    resp = await skill.handle(intent("PlayYouTubeIntent", "nothing like this"))
+    assert "couldn't find nothing like this on YouTube" in resp["response"]["outputSpeech"]["ssml"]
+    skill.catalog.failing = {"search_video"}  # type: ignore[attr-defined]
+    resp = await skill.handle(intent("PlayYouTubeIntent", "anything"))
+    assert "couldn't reach YouTube." in resp["response"]["outputSpeech"]["ssml"]
+    assert not directives(resp)

@@ -1,4 +1,5 @@
-"""Finds the audio link for a song, with a bounded cache and recycled worker processes."""
+"""Finds the audio link for a song, with a bounded cache and recycled worker processes.
+The same workers also run YouTube searches (yt-dlp is only ever loaded in them)."""
 
 from __future__ import annotations
 
@@ -6,11 +7,12 @@ import asyncio
 import logging
 import multiprocessing
 import time
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from echo_tunes.cache import BoundedTTLCache
 from echo_tunes.metrics import METRICS
@@ -19,6 +21,17 @@ from echo_tunes.music import extract
 log = logging.getLogger(__name__)
 
 RESOLVE_TIMEOUT = 30.0
+# A search runs while Alexa waits (~8 s for the whole answer).
+SEARCH_TIMEOUT = 5.0
+# Searches run one at a time, so with two or more workers a song's audio link never waits
+# behind them; a few more may wait their turn, the rest are refused at once.
+MAX_SEARCHES_WAITING = 4
+
+
+class Busy(Exception):
+    """Too many searches are already waiting; try again shortly."""
+
+
 # Re-resolve a link this long before YouTube says it expires.
 EXPIRY_MARGIN = 600
 
@@ -58,6 +71,9 @@ class Resolver:
         # One lookup per worker at a time: the rest wait here, not in the pool's queue, so
         # RESOLVE_TIMEOUT only counts time actually spent running (waiting isn't "stuck").
         self._slots = asyncio.Semaphore(workers)
+        self._searching = asyncio.Semaphore(1)
+        self._search_queue = 0
+        self._search_jobs: set[asyncio.Task[list[dict[str, Any]]]] = set()
 
     async def get(self, video_id: str) -> AudioSource:
         cached = self._cache.get(video_id)
@@ -73,38 +89,14 @@ class Resolver:
         return await asyncio.shield(task)
 
     async def _resolve(self, video_id: str) -> AudioSource:
-        loop = asyncio.get_running_loop()
         t0 = time.monotonic()
-        for attempt in range(2):
-            try:
-                async with self._slots:
-                    pool = self._pool
-                    raw = await asyncio.wait_for(
-                        loop.run_in_executor(
-                            pool, extract.resolve, video_id, self._cookies, self._cache_dir
-                        ),
-                        RESOLVE_TIMEOUT,
-                    )
-                break
-            except TimeoutError as exc:
-                # The worker is still stuck on this job; replace the pool so new songs
-                # don't queue behind it.
-                self._restart_pool(pool)
-                METRICS.resolve_failed(exc)
-                raise
-            except (BrokenProcessPool, asyncio.CancelledError) as exc:
-                # Another lookup timed out and the pool it shared with us was replaced.
-                # That isn't this song's fault: try once more on the new pool.
-                me = asyncio.current_task()
-                if attempt == 0 and self._pool is not pool and not (me and me.cancelling()):
-                    log.info("retrying %s on the restarted worker processes", video_id)
-                    continue
-                if isinstance(exc, BrokenProcessPool):
-                    METRICS.resolve_failed(exc)
-                raise
-            except Exception as exc:
-                METRICS.resolve_failed(exc)
-                raise
+        try:
+            raw = await self._run(
+                RESOLVE_TIMEOUT, extract.resolve, video_id, self._cookies, self._cache_dir
+            )
+        except Exception as exc:
+            METRICS.resolve_failed(exc)
+            raise
         source = AudioSource(
             url=raw["url"],
             headers=raw["headers"],
@@ -116,6 +108,88 @@ class Resolver:
         self._cache.set(video_id, source, ttl=ttl)
         METRICS.resolved(time.monotonic() - t0)
         return source
+
+    async def search(self, query: str, limit: int) -> list[dict[str, Any]]:
+        """YouTube's search results, as plain data from a worker (see music/youtube.py).
+
+        Each search runs as its own task, like a lookup: a caller that gives up (past its
+        budget) doesn't cancel it, so it keeps the one-at-a-time lock and its own
+        SEARCH_TIMEOUT (which restarts the pool if the worker hangs) until it really ends.
+        """
+        if self._search_queue >= MAX_SEARCHES_WAITING:
+            raise Busy
+        self._search_queue += 1
+        job = asyncio.create_task(self._search(query, limit))
+        self._search_jobs.add(job)
+        job.add_done_callback(self._search_finished)
+        return await asyncio.shield(job)
+
+    async def _search(self, query: str, limit: int) -> list[dict[str, Any]]:
+        try:
+            async with self._searching:
+                result: list[dict[str, Any]] = await self._run(
+                    SEARCH_TIMEOUT, extract.search, query, limit
+                )
+                return result
+        finally:
+            self._search_queue -= 1
+
+    def _search_finished(self, job: asyncio.Task[list[dict[str, Any]]]) -> None:
+        self._search_jobs.discard(job)
+        if not job.cancelled():
+            job.exception()  # mark it retrieved: its caller may have given up
+
+    async def _run(self, limit: float, fn: Callable[..., Any], *args: Any) -> Any:
+        """Run ``fn`` in a worker. ``limit`` (seconds) counts only time spent running.
+
+        The worker slot is held until the job really ends: a caller that gives up (a search
+        past its budget, a dropped request) leaves the job running in its worker, and the slot
+        must stay taken until then, or the next job would queue behind it in the pool with its
+        own clock already running.
+        """
+        loop = asyncio.get_running_loop()
+        for attempt in range(2):
+            await self._slots.acquire()
+            free = self._slot_releaser()
+            pool = self._pool
+            try:
+                job = loop.run_in_executor(pool, fn, *args)
+            except BaseException:
+                free()
+                raise
+            try:
+                return await asyncio.wait_for(asyncio.shield(job), limit)
+            except TimeoutError:
+                # The worker is still stuck on this job; replace the pool so new jobs
+                # don't queue behind it. Its slot belongs to the new pool now.
+                self._restart_pool(pool)
+                free()
+                raise
+            except (BrokenProcessPool, asyncio.CancelledError):
+                # Another job timed out and the pool it shared with us was replaced.
+                # That isn't this job's fault: try once more on the new pool.
+                me = asyncio.current_task()
+                if attempt == 0 and self._pool is not pool and not (me and me.cancelling()):
+                    log.info("retrying a job on the restarted worker processes")
+                    continue
+                raise
+            finally:
+                if job.done():
+                    free()
+                else:  # the caller gave up; the worker is still busy with it
+                    job.add_done_callback(_release_when_done(free))
+        raise AssertionError("unreachable")
+
+    def _slot_releaser(self) -> Callable[[], None]:
+        """Releases one worker slot, once, however many times it's called."""
+        held = [True]
+
+        def free() -> None:
+            if held[0]:
+                held[0] = False
+                self._slots.release()
+
+        return free
 
     def _finished(self, video_id: str, task: asyncio.Task[AudioSource]) -> None:
         self._inflight.pop(video_id, None)
@@ -134,7 +208,7 @@ class Resolver:
         if old is not self._pool:
             return  # already replaced by another timed-out lookup
         self._pool = self._new_pool()
-        log.warning("a YouTube lookup timed out; restarting the worker processes")
+        log.warning("a YouTube job timed out; restarting the worker processes")
         for proc in list(getattr(old, "_processes", {}).values()):
             proc.terminate()
         old.shutdown(wait=False, cancel_futures=True)
@@ -157,6 +231,11 @@ class Resolver:
         self._cache.pop(video_id)
 
     def close(self) -> None:
-        for task in [*self._background, *self._inflight.values()]:
+        for task in [*self._background, *self._inflight.values(), *self._search_jobs]:
             task.cancel()
         self._pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _release_when_done(free: Callable[[], None]) -> Callable[[asyncio.Future[Any]], None]:
+    """A done-callback that frees this job's own worker slot (bound now, not by loop name)."""
+    return lambda _job: free()

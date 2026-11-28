@@ -170,3 +170,29 @@ async def test_chunked_body_without_length_is_capped(skill: Skill) -> None:
     await app(scope, receive, send)
     assert sent[0]["status"] == 400
     assert pulled[0] <= 6  # stopped just past 256 KB
+
+
+async def test_google_sign_in_is_built_from_the_settings(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """It must also be closed at shutdown: with no sign-ins waiting its len() is 0, so the
+    code may never test it for truth (that once left it out of the closables)."""
+    from echo_tunes import app as app_module
+    from echo_tunes.config import Settings
+    from echo_tunes.google_login import GoogleLogin
+
+    monkeypatch.chdir(tmp_path)
+    env = {
+        "PUBLIC_URL": "https://music.example.com",
+        "SKILL_IDS": "amzn1.ask.skill.test",
+        "DATA_DIR": str(tmp_path),
+        "DASHBOARD_PASSWORD": "pw",
+        "DASHBOARD_GOOGLE_EMAILS": "me@example.com",
+    }
+    for k, v in env.items():
+        monkeypatch.setenv(f"ECHO_TUNES_{k}", v)
+    assert app_module._google_login(Settings()) is None  # type: ignore[call-arg]  # no client
+    monkeypatch.setenv("ECHO_TUNES_GOOGLE_CLIENT_ID", "id")
+    monkeypatch.setenv("ECHO_TUNES_GOOGLE_CLIENT_SECRET", "secret")
+    g = app_module._google_login(Settings())  # type: ignore[call-arg]
+    assert isinstance(g, GoogleLogin) and g.emails == frozenset({"me@example.com"})
+    assert not g  # the trap: falsy while no sign-in waits
+    await g.aclose()

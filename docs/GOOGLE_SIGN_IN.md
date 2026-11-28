@@ -122,3 +122,6 @@ To also revoke access on Google's side: [myaccount.google.com/permissions](https
   [brand account](https://support.google.com/youtube/answer/7001996) or a second Google account
   that has your playlists.
 - Nothing about your account is ever sent anywhere except to YouTube.
+- The same OAuth client can also let you sign in to the dashboard with your Google account:
+  see [Sign in with Google](DASHBOARD.md#sign-in-with-google). That asks only for your email
+  address.

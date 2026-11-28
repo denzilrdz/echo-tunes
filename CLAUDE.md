@@ -42,9 +42,11 @@ src/echo_tunes/
                     allowlist, sign-in/Basic/Bearer auth, 256 KB body cap; actions = POST
                     JSON, same-origin, password set
   sessions.py       dashboard sign-in sessions (session.key + sessions.json, bounded)
+  google_login.py   dashboard "Sign in with Google" (device flow, email allowlist, bounded)
   alexa/            verify.py (request signatures), skill.py (intents + AudioPlayer events),
                     responses.py (directive builders)
   music/            catalog.py (ytmusicapi), browse.py (validated items for the player),
+                    youtube.py (search all of YouTube: yt-dlp in the workers, checked),
                     resolver.py (yt-dlp in worker processes),
                     extract.py (runs inside a worker), account.py (Google sign-in)
   player/           state.py (queue, tokens, shuffle), store.py (SQLite, per Echo)

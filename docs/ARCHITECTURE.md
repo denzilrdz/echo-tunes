@@ -16,6 +16,7 @@ flowchart LR
     end
 
     App -- "search, radio<br/>(ytmusicapi)" --> YTM[YouTube Music]
+    Workers -- "search on YouTube<br/>(one at a time)" --> YT[YouTube]
     Workers -- "audio link" --> YTM
     App -- "audio bytes (Range)" --> CDN[YouTube CDN]
 ```
@@ -27,7 +28,8 @@ flowchart LR
 | [`alexa/verify.py`](../src/echo_tunes/alexa/verify.py) | Checks every request is really from Alexa: certificate URL rules, certificate chain and name (`echo-api.amazon.com`), RSA-SHA256 signature of the body, timestamp within 150 s, your skill ID. |
 | [`alexa/skill.py`](../src/echo_tunes/alexa/skill.py) | Voice intents, AudioPlayer events and hardware buttons → Alexa responses. One lock per Echo keeps its events in order. |
 | [`music/catalog.py`](../src/echo_tunes/music/catalog.py) | Search and radio from YouTube Music via ytmusicapi. |
-| [`music/resolver.py`](../src/echo_tunes/music/resolver.py), [`extract.py`](../src/echo_tunes/music/extract.py) | Turns a video ID into a direct AAC audio link with yt-dlp, in separate worker processes. |
+| [`music/youtube.py`](../src/echo_tunes/music/youtube.py) | Search across all of YouTube ("play … on YouTube", the player's YouTube tab): checks yt-dlp's results, drops live streams, caches. |
+| [`music/resolver.py`](../src/echo_tunes/music/resolver.py), [`extract.py`](../src/echo_tunes/music/extract.py) | Turns a video ID into a direct AAC audio link with yt-dlp, in separate worker processes; also runs the YouTube searches there. |
 | [`stream.py`](../src/echo_tunes/stream.py) | Relays audio to the Echo, honouring `Range` requests. |
 | [`player/`](../src/echo_tunes/player) | Each Echo's queue, position, shuffle and loop, stored in SQLite. |
 | [`tokens.py`](../src/echo_tunes/tokens.py) | Signed, expiring stream links. |
@@ -40,7 +42,7 @@ flowchart LR
 
 1. **"Alexa, ask my tunes to play Blinding Lights."** Alexa sends a signed `IntentRequest`
    (`PlayIntent`, `query = "blinding lights"`) to `POST /alexa`.
-2. echo-tunes verifies it, searches YouTube Music, and **immediately starts preparing the audio
+2. echo-tunes verifies it, searches YouTube Music (or all of YouTube for "... on YouTube"), and **immediately starts preparing the audio
    link** in a worker. While that runs it fetches a radio of similar songs and saves the queue.
 3. It answers with speech and an `AudioPlayer.Play` directive whose URL is
    `https://<you>/stream/<video>.<expiry>.<signature>.m4a`.

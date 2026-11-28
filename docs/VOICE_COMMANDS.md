@@ -13,6 +13,21 @@ commands work on their own: *"Alexa, next"*.
 | "… play **radio for Tum Hi Ho**"                     | Same as play, but tells you it's starting a radio.          |
 | "… play **something like Coldplay**"                 | Radio based on the best match.                              |
 
+## Anything on YouTube
+
+Add **"on YouTube"** to search all of YouTube instead of just YouTube Music: covers, live sets,
+fan cams, talks, podcasts.
+
+| Say                                                  | What happens                                                |
+| ---------------------------------------------------- | ----------------------------------------------------------- |
+| "… play **Kesariya unplugged on YouTube**"           | Plays the top YouTube result, then a radio of similar songs. |
+| "… **search YouTube for** lofi study session"        | The same.                                                    |
+| "… play **the YouTube video** how to tie a tie"      | The same.                                                    |
+
+Keep "ask my tunes" in the sentence: *"Alexa, play … on YouTube"* on its own goes to Alexa's
+built-in music services, not to echo-tunes. Live streams are skipped (the Echo can't play
+them). The radio after a video comes from YouTube Music, so it suits music better than talks.
+
 Or in two steps: say **"Alexa, open my tunes"**, and when it asks *"What would you like to play?"*,
 just say the song: **"One Love by Blue"** (no need to say "play").
 

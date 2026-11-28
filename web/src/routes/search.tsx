@@ -14,13 +14,15 @@ import { KEYS, load, save } from "@/lib/storage";
 import type { Item, Kind } from "@/lib/types";
 import { MoodGrid } from "./home";
 
-export type SearchType = "all" | Kind;
+/** "video" searches all of YouTube, not just YouTube Music: covers, live sets, podcasts... */
+export type SearchType = "all" | Kind | "video";
 const TYPES: [SearchType, string][] = [
   ["all", "All"],
   ["song", "Songs"],
   ["album", "Albums"],
   ["artist", "Artists"],
   ["playlist", "Playlists"],
+  ["video", "YouTube"],
 ];
 
 export function SearchPage() {
@@ -79,7 +81,7 @@ export function SearchPage() {
             maxLength={100}
             onChange={(e) => setText(e.target.value)}
             placeholder="Songs, albums, artists, playlists"
-            aria-label="Search YouTube Music"
+            aria-label="Search"
             className="h-12 w-full rounded-full border border-transparent bg-surface-2 pr-12 pl-12 text-[16px] text-fg placeholder:text-fg-subtle focus:border-border focus:bg-surface focus:outline-none focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] md:max-w-[560px]"
           />
           {text && (
@@ -174,6 +176,7 @@ function Idle({ onPick }: { onPick: (v: string) => void }) {
 }
 
 function Results({ q, type, onUse }: { q: string; type: SearchType; onUse: () => void }) {
+  if (type === "video") return <Videos q={q} />;
   if (type !== "all") return <Single q={q} kind={type} />;
   return <All q={q} onUse={onUse} />;
 }
@@ -188,6 +191,25 @@ function Single({ q, kind }: { q: string; kind: Kind }) {
   return (
     <div className="pt-2">
       <CardGrid items={items} />
+    </div>
+  );
+}
+
+function Videos({ q }: { q: string }) {
+  // Each YouTube search takes a server worker for about a second: wait for a real pause in
+  // typing rather than searching every prefix.
+  const settled = useDebounced(q, 700);
+  const r = useSearch(settled, "video");
+  if (r.isLoading) return <TrackListSkeleton />;
+  if (r.error) return <ErrorNote error={r.error} retry={() => r.refetch()} />;
+  const items = r.data?.items ?? [];
+  if (!items.length) return <NoResults q={q} />;
+  return (
+    <div className="pt-2">
+      <p className="px-4 pb-2 text-[13px] text-fg-muted md:px-8">
+        From all of YouTube. Live streams are left out: they can't play here.
+      </p>
+      <TrackList tracks={items.map(itemToTrack)} source={`YouTube: ${q}`} />
     </div>
   );
 }

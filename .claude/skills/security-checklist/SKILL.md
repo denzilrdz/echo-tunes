@@ -39,8 +39,15 @@ description: Security rules for echo-tunes. Use before merging anything that tou
       the server's list (max 100), so sign-out and *sign out everywhere*
       (`POST /api/logout/all`) really end sessions; the issue time is checked against the
       current `DASHBOARD_SESSION_DAYS`; HttpOnly, SameSite=Lax, Secure behind HTTPS).
+      Google sign-in (`google_login.py`, only with a password set): device flow, scope
+      `openid email`, ID token from the token endpoint checked for issuer, audience, expiry,
+      `email_verified` and the `DASHBOARD_GOOGLE_EMAILS` allowlist; then the same session as
+      the password, plus the email: a session counts only while its email is still listed
+      (`Sessions(google_emails=...)`). Pending flows capped (`MAX_PENDING`) and expiring; the browser polls with
+      a 256-bit flow secret; starts are rate-limited (`MAX_STARTS`/min) and the cap is checked before calling Google; an in-use flow is never evicted; no Google token is kept or revoked (revoking would end the YouTube
+      Music grant on the same client). `/api/login/options`, `/api/login/google[/poll]` are public.
       Monitors use `DASHBOARD_API_TOKEN` (Bearer, >= 32 chars, no gate); scripts may use Basic
-      auth. Only `/login`, `/api/login`, `/static/*`, `/assets/*` (the built app, no data),
+      auth. Only `/login`, `/api/login*`, `/static/*`, `/assets/*` (the built app, no data),
       the manifest and `/sw.js` are public; no `WWW-Authenticate` for browser requests (no pop-up). Every password check (sign-in or
       Basic) waits for one shared gate *before* comparing SHA-256 digests (constant time
       whatever the length); a wrong one holds it 1 s; over 20 queued get 429. No per-address

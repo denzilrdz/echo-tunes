@@ -6,6 +6,7 @@ own allocation tracker: after a warm-up round, further rounds must not keep allo
 
 from __future__ import annotations
 
+import asyncio
 import gc
 import json
 import tracemalloc
@@ -40,6 +41,7 @@ def one_round(c: TestClient, amazon: FakeAmazon, n: int) -> None:
     post(intent("AMAZON.NextIntent"))
     post(envelope({"type": "PlaybackController.NextCommandIssued"}))
     post(intent("WhatsPlayingIntent"))
+    post(intent("PlayYouTubeIntent", f"video number {n} on youtube"))
 
 
 def test_memory_stays_flat(skill: Skill) -> None:
@@ -65,3 +67,33 @@ def test_memory_stays_flat(skill: Skill) -> None:
     growth = sum(s.size_diff for s in after.compare_to(base, "filename"))
     top = "\n".join(str(s) for s in after.compare_to(base, "lineno")[:8])
     assert growth < ALLOWED_GROWTH_KB * 1024, f"grew {growth / 1024:.0f} KB:\n{top}"
+
+
+async def test_youtube_search_cache_stays_bounded() -> None:
+    """The real YouTubeSearch (the soak above uses a fake catalog): thousands of different
+    searches keep at most its cache's worth of results."""
+    from echo_tunes.music.youtube import YouTubeSearch
+
+    async def fake(query: str, limit: int) -> list[dict]:  # type: ignore[type-arg]
+        return [
+            {"id": f"{i:011d}", "title": f"{query} {i}", "channel": "c", "duration": 60}
+            for i in range(limit)
+        ]
+
+    s = YouTubeSearch(fake)
+    # Trace from the start: the cache replaces every entry, and freeing entries made before
+    # tracing began wouldn't be counted against the new ones.
+    tracemalloc.start()
+    for n in range(300):  # warm-up: past the cache's 128 places, so it's full
+        await s.search(f"warm query {n:04d}")
+        await asyncio.sleep(0)
+    gc.collect()
+    base = tracemalloc.take_snapshot()
+    for n in range(3000):
+        await s.search(f"same length {n:04d}")
+        await asyncio.sleep(0)  # let the loop run, as a server's does (it clears old timers)
+    gc.collect()
+    grown = sum(st.size_diff for st in tracemalloc.take_snapshot().compare_to(base, "filename"))
+    tracemalloc.stop()
+    assert len(s._cache) <= 128
+    assert grown < ALLOWED_GROWTH_KB * 1024, f"grew {grown / 1024:.0f} KB"
