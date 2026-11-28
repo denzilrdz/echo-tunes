@@ -140,18 +140,29 @@ async def test_refusals(google: FakeGoogle, answer: dict[str, Any], status: int)
     await g.aclose()
 
 
-async def test_pending_sign_ins_are_capped_and_expire(
+async def test_pending_sign_ins_are_capped_and_cant_block_a_new_one(
     google: FakeGoogle, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(google_login.time, "monotonic", lambda: clock[0])
     g = google.login()
-    flows = [(await g.start())["flow"] for _ in range(google_login.MAX_PENDING)]
-    with pytest.raises(GoogleLoginError) as full:
+    mine = (await g.start())["flow"]
+    for _ in range(google_login.MAX_PENDING * 3):  # someone starts codes and walks away
+        clock[0] += 1
+        assert await g.poll(mine) is None  # the page that's open keeps checking
         await g.start()
-    assert full.value.status == 429 and len(g) == google_login.MAX_PENDING
-    later = time.monotonic() + google_login.FLOW_SECONDS + 1
-    monkeypatch.setattr(google_login.time, "monotonic", lambda: later)
+    assert len(g) == google_login.MAX_PENDING  # never more
+    assert mine in g._flows  # the one being checked on was never pushed out
+    # Abandoned sign-ins go after IDLE_SECONDS; the one still checked on stays.
+    clock[0] += google_login.IDLE_SECONDS - 5
+    assert await g.poll(mine) is None
+    clock[0] += 10
+    await g.start()
+    assert len(g) == 2 and mine in g._flows
+    # And everything expires.
+    clock[0] += google_login.FLOW_SECONDS + 1
     with pytest.raises(GoogleLoginError):
-        await g.poll(flows[0])
+        await g.poll(mine)
     assert len(g) == 0
     await g.aclose()
 

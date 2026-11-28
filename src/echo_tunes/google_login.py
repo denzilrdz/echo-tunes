@@ -12,7 +12,13 @@ Core 3.1.3.7); its issuer, audience, expiry and verified email are. Only address
 ``ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`` get in. Google's tokens are dropped at once and never
 revoked: revoking would also end the YouTube Music sign-in made with the same client.
 
-Pending sign-ins are capped (``MAX_PENDING``) and expire after ``FLOW_SECONDS``.
+Pending sign-ins are capped (``MAX_PENDING``) and expire after ``FLOW_SECONDS``. One the
+browser stops checking on (the page was closed) is dropped after ``IDLE_SECONDS``, and when
+the cap is reached a new sign-in pushes out the one checked on least recently, so nobody can
+block Google sign-in by starting codes and walking away.
+
+Like every TV-style sign-in, approving a code someone else started signs *them* in; the page
+and docs say to only enter a code you started yourself.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ SCOPE = "openid email"
 ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
 MAX_PENDING = 8  # sign-ins waiting for approval at once
 FLOW_SECONDS = 600  # a code is good for this long here (Google allows longer)
+IDLE_SECONDS = 45.0  # a sign-in nobody has checked on for this long is dropped
 CLOCK_SKEW = 300  # seconds of leeway on the token's expiry
 
 
@@ -52,6 +59,7 @@ class _Flow:
     interval: float
     expires: float  # time.monotonic()
     next_poll: float
+    seen: float  # when the browser last checked on it
     busy: bool = False
 
 
@@ -71,8 +79,6 @@ class GoogleLogin:
     async def start(self) -> dict[str, Any]:
         """Ask Google for a code to show. ``flow`` is the secret the browser polls with."""
         self._prune()
-        if len(self._flows) >= MAX_PENDING:
-            raise GoogleLoginError(429, "Too many Google sign-ins waiting; try again shortly.")
         data = await self._post(DEVICE_CODE_URL, {"client_id": self._id, "scope": SCOPE})
         code, device_code = data.get("user_code"), data.get("device_code")
         if not isinstance(code, str) or not isinstance(device_code, str):
@@ -84,8 +90,11 @@ class GoogleLogin:
         interval = min(max(float(data.get("interval") or 5), 1.0), 30.0)
         lifetime = min(float(data.get("expires_in") or FLOW_SECONDS), FLOW_SECONDS)
         now = time.monotonic()
+        self._prune()
+        while len(self._flows) >= MAX_PENDING:  # push out the one checked on least recently
+            del self._flows[min(self._flows, key=lambda k: self._flows[k].seen)]
         flow = secrets.token_urlsafe(32)
-        self._flows[flow] = _Flow(device_code, interval, now + lifetime, now + interval)
+        self._flows[flow] = _Flow(device_code, interval, now + lifetime, now + interval, now)
         return {
             "flow": flow,
             "url": url[:200],
@@ -101,6 +110,7 @@ class GoogleLogin:
         if flow is None:
             raise GoogleLoginError(410, "This sign-in code expired. Start again.")
         now = time.monotonic()
+        flow.seen = now
         if flow.busy or now < flow.next_poll:
             return None  # Google asks for at most one check per interval
         flow.busy = True
@@ -171,7 +181,10 @@ class GoogleLogin:
 
     def _prune(self) -> None:
         now = time.monotonic()
-        for key in [k for k, f in self._flows.items() if f.expires <= now]:
+        idle = [
+            k for k, f in self._flows.items() if now - f.seen > max(IDLE_SECONDS, 3 * f.interval)
+        ]
+        for key in {*(k for k, f in self._flows.items() if f.expires <= now), *idle}:
             del self._flows[key]
 
     def __len__(self) -> int:

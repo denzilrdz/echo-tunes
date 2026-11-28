@@ -144,8 +144,9 @@ once you approve it, and the device stays signed in like it does with the passwo
   which a private dashboard doesn't have; this kind of sign-in has no redirect.
 - Only the accounts listed get in. echo-tunes asks Google only for the account's email address
   and keeps none of Google's tokens.
-- Only approve a code you started yourself: whoever started the sign-in gets the session. Each
-  code expires after 10 minutes, and at most 8 sign-ins can wait at once.
+- Only approve a code you started yourself: whoever started the sign-in gets the session (the
+  page says so too). Each code expires after 10 minutes; a sign-in whose page was closed is
+  dropped after 45 seconds, and at most 8 wait at once (a new one pushes out the stalest).
 - Google keeps at most 100 sign-in tokens per account for one OAuth client and drops the oldest
   beyond that, so after very many dashboard sign-ins with the account you use for YouTube
   Music, run `echo-tunes login` again if your library stops loading.

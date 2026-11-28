@@ -79,6 +79,9 @@ function GoogleSignIn() {
           {started.url.replace(/^https:\/\/(www\.)?/, "")}
           <ExternalLink className="size-4" aria-hidden />
         </a>
+        <p className="mt-3 text-[13px] text-fg-muted">
+          Only enter a code you started on this page yourself: whoever started it gets signed in.
+        </p>
         <p className="mt-3 flex items-center justify-center gap-2 text-[13px] text-fg-muted">
           <LoaderCircle className="size-4 animate-spin" aria-hidden />
           Waiting for you to approve it…
