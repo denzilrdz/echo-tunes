@@ -93,8 +93,13 @@ _FILLER = frozenset(
 _ARTIST_SUFFIX = re.compile(
     r"(?:\s*-\s*topic|(?-i:(?<=[a-z])VEVO)|\s+official(?:\s+(?:youtube|channel))*)$", re.IGNORECASE
 )
-# Emoji and their glue: pictographs (category So) plus skin tones, the keycap mark and flag tags.
-_EMOJI_PARTS = re.compile("[\U0001f3fb-\U0001f3ff\u20e3\U000e0020-\U000e007f\ufe0e\ufe0f]")
+
+
+def _emoji_part(c: str) -> bool:
+    """Pieces that only decorate an emoji: skin tones, the keycap mark, flag tag characters and
+    variation selectors (pictographs themselves are category So)."""
+    n = ord(c)
+    return 0x1F3FB <= n <= 0x1F3FF or 0xE0020 <= n <= 0xE007F or n in (0x20E3, 0xFE0E, 0xFE0F)
 
 
 def _filler(inside: str) -> bool:
@@ -111,8 +116,9 @@ def _no_emoji(text: str) -> str:
             around = text[i - 1 : i] + text[i + 1 : i + 2]
             if any(unicodedata.category(x) == "So" for x in around):
                 continue
-        out.append(" " if unicodedata.category(c) == "So" else c)
-    return _EMOJI_PARTS.sub("", "".join(out))
+        if not _emoji_part(c):
+            out.append(" " if unicodedata.category(c) == "So" else c)
+    return "".join(out)
 
 
 def _clean(part: str) -> str:
