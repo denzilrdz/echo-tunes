@@ -162,7 +162,8 @@ def _no_emoji(text: str) -> str:
 
 def _clean(part: str) -> str:
     part = _BRACKETS.sub(lambda m: "" if _filler(m.group(1)) else m.group(0), part)
-    return " ".join(_no_emoji(part).split())
+    # A separator stuck to a word ("|Arijit Singh live") would be read out as "vertical bar".
+    return " ".join(_no_emoji(part).split()).strip("|‖• ")
 
 
 def spoken_title(title: str, artist: str = "") -> str:

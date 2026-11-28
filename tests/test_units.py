@@ -175,6 +175,13 @@ def test_stream_tokens_accept_only_the_canonical_signature() -> None:
         ("Song\uff08Official Video\uff09", "x", "Song by x"),  # full-width brackets
         ("Love // Hate", "Elvevo", "Love // Hate by Elvevo"),  # not a separator, not VEVO
         ("AC/DC", "The Official", "AC/DC by The Official"),
+        # Seen on the Alexa simulator with 0.5.0-rc.3: a separator stuck to the first word.
+        (
+            "|Arijit Singh live - Mtv Unplugged season 7",
+            "Arijit Singh",
+            "Arijit Singh live - Mtv Unplugged season 7 by Arijit Singh",
+        ),
+        ("Song • | Topic", "x", "Song by x"),
     ],
 )
 def test_alexa_says_a_short_title(title: str, artist: str, said: str) -> None:
