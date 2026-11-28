@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
   JSON Editor → paste `skill-package/interactionModels/custom/<your locale>.json` → Save →
   Build).
 - The web player's search has a **YouTube** tab with the same results.
+- Alexa says a short title: the first part of a title split at " | ", " ‖ " or " • ", without
+  brackets of pure filler ("(Official Music Video)", "[4K]", "(Remastered 2011)") or emoji, and
+  without a leading "Artist - " when it repeats the artist; the channel without "VEVO",
+  "- Topic" or " Official". Brackets with real information ("(Official Remix)", "(Live at …)")
+  stay. This applies to every song, YouTube Music too; the player still shows the full title.
 - **Sign in to the dashboard with Google**, as well as with the password. List the accounts in
   `ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`. The sign-in page shows a code to approve at
   google.com/device, so it works on a LAN address over plain HTTP. It uses the OAuth client

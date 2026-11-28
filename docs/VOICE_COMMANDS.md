@@ -24,6 +24,10 @@ fan cams, talks, podcasts.
 | "… **search YouTube for** lofi study session"        | The same.                                                    |
 | "… play **the YouTube video** how to tie a tie"      | The same.                                                    |
 
+Alexa says a short title ("Playing Kesariya - Film Version by SonyMusicIndia from YouTube"):
+the first part of the video's title (before " | "), without filler like "(Official Video)" or
+emoji. The web player shows the full title.
+
 Keep "ask my tunes" in the sentence: *"Alexa, play … on YouTube"* on its own goes to Alexa's
 built-in music services, not to echo-tunes. Live streams are skipped (the Echo can't play
 them). The radio after a video comes from YouTube Music, so it suits music better than talks.
@@ -58,7 +62,7 @@ based on its last song carries on.
 | "Alexa, **start over**" / "**repeat**" |                            | Restarts the current song                       |
 | "Alexa, **shuffle**" / "**stop shuffling**" |                       | Shuffles the songs after the current one        |
 | "Alexa, **loop**" / "**stop looping**" |                            | Repeats the whole queue instead of adding radio |
-| "Alexa, ask my tunes **what's playing**" |                        | Says the song and artist                        |
+| "Alexa, ask my tunes **what's playing**" |                        | Says the song and artist (a short title)        |
 
 ## Tips
 

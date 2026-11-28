@@ -7,6 +7,7 @@ import asyncio
 import difflib
 import logging
 import re
+import unicodedata
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -34,7 +35,10 @@ class Track:
 
     @property
     def spoken(self) -> str:
-        return f"{self.title} by {self.artist}" if self.artist else self.title
+        """What Alexa says: a short title and artist (the player shows the full title)."""
+        artist = spoken_artist(self.artist)
+        title = spoken_title(self.title, artist)
+        return f"{title} by {artist}" if artist else title
 
     def to_dict(self) -> dict[str, Any]:
         return {"v": self.video_id, "t": self.title, "a": self.artist, "d": self.duration}
@@ -67,6 +71,83 @@ class Catalog(Protocol):
     async def mix(self, name: str) -> Collection | None: ...
     async def like(self, video_id: str) -> None: ...
     async def played(self, video_id: str) -> None: ...
+
+
+# YouTube video titles are written for a screen: "Kesariya - Film Version | Brahmastra | Ranbir
+# | Alia | Pritam" or "Rick Astley - Never Gonna Give You Up (Official Music Video) [4K]". Read
+# aloud, the parts after the first separator and brackets of pure filler are noise.
+_TITLE_SPLIT = re.compile(r"\s+[|‖•]\s+")
+# Round and square brackets, also the full-width ones of Japanese and Chinese uploads
+# (U+3010/3011 lenticular, U+FF08/FF09, U+FF3B/FF3D).
+_OPEN, _CLOSE = "([\u3010\uff08\uff3b", ")]\u3011\uff09\uff3d"
+_BRACKETS = re.compile(
+    "\\s*[" + re.escape(_OPEN) + "]([^" + re.escape(_CLOSE) + "]*)[" + re.escape(_CLOSE) + "]"
+)
+_FILLER = frozenset(
+    {
+        "official", "music", "video", "audio", "lyric", "lyrics", "lyrical", "visualizer",
+        "visualiser", "hd", "hq", "4k", "8k", "full", "song", "mv", "remaster", "remastered",
+        "version",
+    }
+)  # fmt: skip
+_ARTIST_SUFFIX = re.compile(
+    r"(?:\s*-\s*topic|(?-i:(?<=[a-z])VEVO)|\s+official(?:\s+(?:youtube|channel))*)$", re.IGNORECASE
+)
+
+
+def _emoji_part(c: str) -> bool:
+    """Pieces that only decorate an emoji: skin tones, the keycap mark, flag tag characters and
+    variation selectors (pictographs themselves are category So)."""
+    n = ord(c)
+    return 0x1F3FB <= n <= 0x1F3FF or 0xE0020 <= n <= 0xE007F or n in (0x20E3, 0xFE0E, 0xFE0F)
+
+
+def _filler(inside: str) -> bool:
+    """True when every word in a bracket is filler: "(Official Music Video)", "[4K]", "(2011
+    Remaster)"; not "(Official Remix)" or "(Live from the VMAs)"."""
+    words = re.findall(r"\w+", inside.lower())
+    return bool(words) and all(w in _FILLER or re.fullmatch(r"\d{4}", w) for w in words)
+
+
+def _no_emoji(text: str) -> str:
+    out = []
+    for i, c in enumerate(text):
+        if c == "\u200d":  # a joiner only glues emoji together; in Sinhala or Malayalam it's text
+            around = text[i - 1 : i] + text[i + 1 : i + 2]
+            if any(unicodedata.category(x) == "So" for x in around):
+                continue
+        if not _emoji_part(c):
+            out.append(" " if unicodedata.category(c) == "So" else c)
+    return "".join(out)
+
+
+def _clean(part: str) -> str:
+    part = _BRACKETS.sub(lambda m: "" if _filler(m.group(1)) else m.group(0), part)
+    return " ".join(_no_emoji(part).split())
+
+
+def spoken_title(title: str, artist: str = "") -> str:
+    """The part of a title worth saying aloud: the first part with words in it, without filler
+    brackets, emoji or a leading "<artist> - "; the full title when nothing is left."""
+    parts = [_clean(p) for p in _TITLE_SPLIT.split(title)]
+    short = next((p for p in parts if re.search(r"\w", p)), "") or _clean(title) or title
+    head, dash, rest = short.partition(" - ")
+    if dash and rest and artist and _same(head, artist):
+        short = rest
+    return short
+
+
+def spoken_artist(artist: str) -> str:
+    """A channel name as people say it: "SonyMusicIndiaVEVO" -> "SonyMusicIndia"."""
+    short = _ARTIST_SUFFIX.sub("", artist.strip()).strip()
+    return short if len(short) >= 4 else artist  # "The Official" is a name, not a suffix
+
+
+def _same(a: str, b: str) -> bool:
+    def key(x: str) -> str:
+        return re.sub(r"\W", "", x).lower()
+
+    return bool(key(a)) and key(a) == key(b)
 
 
 def _artists(item: dict[str, Any]) -> str:
