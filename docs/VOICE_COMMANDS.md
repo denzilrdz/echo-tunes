@@ -24,9 +24,11 @@ fan cams, talks, podcasts.
 | "… **search YouTube for** lofi study session"        | The same.                                                    |
 | "… play **the YouTube video** how to tie a tie"      | The same.                                                    |
 
-Alexa says a short title ("Playing Kesariya - Film Version by SonyMusicIndia"): the part of
-the video's title before the first "|", without tags like "(Official Video)". The web player
-shows the full title. Keep "ask my tunes" in the sentence: *"Alexa, play … on YouTube"* on its own goes to Alexa's
+Alexa says a short title ("Playing Kesariya - Film Version by SonyMusicIndia from YouTube"):
+the first part of the video's title (before " | "), without filler like "(Official Video)" or
+emoji. The web player shows the full title.
+
+Keep "ask my tunes" in the sentence: *"Alexa, play … on YouTube"* on its own goes to Alexa's
 built-in music services, not to echo-tunes. Live streams are skipped (the Echo can't play
 them). The radio after a video comes from YouTube Music, so it suits music better than talks.
 

@@ -137,7 +137,7 @@ def test_stream_tokens_accept_only_the_canonical_signature() -> None:
         ("Bohemian Rhapsody (Remastered 2011)", "Queen - Topic", "Bohemian Rhapsody by Queen"),
         ("How to Tie a Tie", "", "How to Tie a Tie"),
         ("(Official Video)", "x", "(Official Video) by x"),  # nothing left: keep it all
-        ("Lofi • beats to study // relax", "Lofi Girl", "Lofi by Lofi Girl"),
+        ("Lofi • beats to study", "Lofi Girl", "Lofi by Lofi Girl"),
         ("Song | ", "VEVO", "Song by VEVO"),
         (
             "1 A.M Study Session 📚 [lofi hip hop]",
@@ -146,6 +146,35 @@ def test_stream_tokens_accept_only_the_canonical_signature() -> None:
         ),
         ("Kesariya ❤️ (Official Audio)", "x", "Kesariya by x"),
         ("केसरिया | Brahmastra", "अरिजीत", "केसरिया by अरिजीत"),  # vowel signs stay
+        # Second review of #31: brackets with real information stay.
+        (
+            "Despacito (Official Remix) ft. Justin Bieber",
+            "x",
+            "Despacito (Official Remix) ft. Justin Bieber by x",
+        ),
+        (
+            "Hello (Live from the Video Music Awards)",
+            "Adele",
+            "Hello (Live from the Video Music Awards) by Adele",
+        ),
+        ("Song (feat. Sia)", "x", "Song (feat. Sia) by x"),
+        # The first part is only filler: say the next one, never the raw title.
+        ("(Official Video) | Never Gonna Give You Up", "x", "Never Gonna Give You Up by x"),
+        ("📚 | Study Session", "x", "Study Session by x"),
+        # Emoji glue, skin tones, keycaps; but a joiner inside Sinhala is spelling.
+        ("Song 👍🏽 1️⃣", "x", "Song 1 by x"),  # the keycap's digit is kept
+        ("ශ්\u200dරී", "x", "ශ්\u200dරී by x"),
+        # "Artist - Title" from the artist's own channel: the artist once.
+        (
+            "Rick Astley - Never Gonna Give You Up (Official Music Video)",
+            "RickAstleyVEVO",
+            "Never Gonna Give You Up by RickAstley",
+        ),
+        ("Queen - Bohemian Rhapsody", "Abba", "Queen - Bohemian Rhapsody by Abba"),
+        ("【MV】紅蓮華", "LiSA Official YouTube", "紅蓮華 by LiSA"),
+        ("Song\uff08Official Video\uff09", "x", "Song by x"),  # full-width brackets
+        ("Love // Hate", "Elvevo", "Love // Hate by Elvevo"),  # not a separator, not VEVO
+        ("AC/DC", "The Official", "AC/DC by The Official"),
     ],
 )
 def test_alexa_says_a_short_title(title: str, artist: str, said: str) -> None:
