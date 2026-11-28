@@ -128,3 +128,19 @@ def test_app_icon_must_be_a_png(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     fake.write_text("<svg/>")
     with pytest.raises(ValidationError, match="not a PNG"):
         make(monkeypatch, tmp_path, APP_ICON=str(fake))
+
+
+def test_google_emails_for_the_dashboard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    s = make(
+        monkeypatch,
+        tmp_path,
+        DASHBOARD_PASSWORD="pw",
+        DASHBOARD_GOOGLE_EMAILS=" Me@Gmail.com , partner@example.org,",
+    )
+    assert s.dashboard_google_emails == ["me@gmail.com", "partner@example.org"]
+    for bad in ("not-an-email", "a@b@c.com", "me@localhost"):
+        with pytest.raises(ValidationError):
+            make(monkeypatch, tmp_path, DASHBOARD_PASSWORD="pw", DASHBOARD_GOOGLE_EMAILS=bad)
+    monkeypatch.delenv("ECHO_TUNES_DASHBOARD_PASSWORD")
+    with pytest.raises(ValidationError, match="password"):  # Google sign-in adds to it
+        make(monkeypatch, tmp_path, DASHBOARD_GOOGLE_EMAILS="me@gmail.com")

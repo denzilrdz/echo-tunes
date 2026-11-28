@@ -20,6 +20,7 @@ from echo_tunes.alexa.verify import MAX_BODY_BYTES, AlexaVerifier, RequestReject
 from echo_tunes.checks import TEST_SONG, run_checks, summary
 from echo_tunes.config import Settings
 from echo_tunes.dashboard import DashboardDeps
+from echo_tunes.google_login import GoogleLogin
 from echo_tunes.health import memory_mb
 from echo_tunes.history import History
 from echo_tunes.metrics import METRICS
@@ -119,6 +120,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
         settings.dashboard_password.get_secret_value() if settings.dashboard_password else None
     )
     relay = StreamRelay(resolver, client, probe_client)
+    google = _google_login(settings) if password else None
     services = Services(
         skill=skill,
         verifier=AlexaVerifier(settings.skill_ids),
@@ -138,6 +140,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             ),
             session_secret=settings.session_secret,
             sessions_file=settings.data_dir / "sessions.json",
+            google=google,
             public_origin=settings.base_url,
             allowed_hosts=frozenset(
                 [*settings.dashboard_hosts, (settings.public_url.host or "").lower()]
@@ -154,7 +157,27 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             app_icon=settings.app_icon,
         ),
     )
-    return services, [resolver, store, history, client, probe_client, services.verifier, catalog]
+    closables: list[object] = [resolver, store, history, client, probe_client, services.verifier]
+    return services, [*closables, catalog, *([google] if google else [])]
+
+
+def _google_login(settings: Settings) -> GoogleLogin | None:
+    """Google sign-in for the dashboard, when emails are listed and an OAuth client exists."""
+    if not settings.dashboard_google_emails:
+        return None
+    client = account.load_client(
+        settings.data_dir, settings.google_client_id, settings.google_client_secret
+    )
+    if client is None:
+        log.warning(
+            "ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS is set but there's no Google OAuth client: "
+            "set ECHO_TUNES_GOOGLE_CLIENT_ID/SECRET or run `echo-tunes login` (see "
+            "docs/GOOGLE_SIGN_IN.md). Google sign-in is off; the password still works."
+        )
+        return None
+    return GoogleLogin(
+        client.client_id, client.client_secret, frozenset(settings.dashboard_google_emails)
+    )
 
 
 async def _setup_checks(

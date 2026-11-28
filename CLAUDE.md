@@ -42,6 +42,7 @@ src/echo_tunes/
                     allowlist, sign-in/Basic/Bearer auth, 256 KB body cap; actions = POST
                     JSON, same-origin, password set
   sessions.py       dashboard sign-in sessions (session.key + sessions.json, bounded)
+  google_login.py   dashboard "Sign in with Google" (device flow, email allowlist, bounded)
   alexa/            verify.py (request signatures), skill.py (intents + AudioPlayer events),
                     responses.py (directive builders)
   music/            catalog.py (ytmusicapi), browse.py (validated items for the player),

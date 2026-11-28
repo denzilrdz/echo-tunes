@@ -124,6 +124,32 @@ choice in Settings). Change how it looks without touching code:
 | `ECHO_TUNES_APP_COLOR` | (violet) | Accent colour (`#rrggbb`) for buttons and highlights. The title bar and splash screen always use the app's background, so they match the light and dark themes. |
 | `ECHO_TUNES_APP_ICON` | (built in) | Path to your own square PNG (512×512 or larger, under 2 MB), e.g. `/data/icon.png`. |
 
+## Sign in with Google
+
+Besides the password, you can let chosen Google accounts sign in:
+
+```bash
+ECHO_TUNES_DASHBOARD_PASSWORD=...                       # still needed, and still works
+ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS=you@gmail.com,partner@gmail.com
+```
+
+The sign-in page then shows **Sign in with Google**. It gives you a short code; open
+`google.com/device` on your phone, enter it and pick your account. The page signs in by itself
+once you approve it, and the device stays signed in like it does with the password.
+
+- It uses the **OAuth client you created for [`echo-tunes login`](GOOGLE_SIGN_IN.md)**
+  (or `ECHO_TUNES_GOOGLE_CLIENT_ID`/`_SECRET`). Nothing else to set up in Google Cloud.
+- It works on a **LAN address over plain HTTP** (`http://192.168.1.20:8081`). Google's usual
+  "redirect back to the site" sign-in only allows HTTPS addresses with a public domain name,
+  which a private dashboard doesn't have; this kind of sign-in has no redirect.
+- Only the accounts listed get in. echo-tunes asks Google only for the account's email address
+  and keeps none of Google's tokens.
+- Only approve a code you started yourself: whoever started the sign-in gets the session. Each
+  code expires after 10 minutes, and at most 8 sign-ins can wait at once.
+- Google keeps at most 100 sign-in tokens per account for one OAuth client and drops the oldest
+  beyond that, so after very many dashboard sign-ins with the account you use for YouTube
+  Music, run `echo-tunes login` again if your library stops loading.
+
 ## Safety
 
 It only answers to IP addresses, `localhost`, your public URL's name and names listed in
@@ -156,6 +182,7 @@ private as long as you don't publish 8081 to the internet yourself.
 | `ECHO_TUNES_DASHBOARD_HOST` | `127.0.0.1` (`0.0.0.0` in the Docker image) | Address it listens on. The image listens on all interfaces so the port can be published; publish it privately. |
 | `ECHO_TUNES_DASHBOARD_HOSTS` | (none) | Extra host names you open it by, comma-separated (e.g. `music-dash.lan`). IP addresses, `localhost` and your public URL's name always work; other names are refused. |
 | `ECHO_TUNES_DASHBOARD_PASSWORD` | (none) | Password: sign-in page for browsers, HTTP Basic (user `admin`) for scripts. Needed for the player's actions. |
+| `ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS` | (none) | Google accounts that may also sign in, comma-separated (see [Sign in with Google](#sign-in-with-google)). Needs the password. |
 | `ECHO_TUNES_DASHBOARD_SESSION_DAYS` | `180` | How long a device stays signed in. `0` = until you sign out or change the password. |
 | `ECHO_TUNES_DASHBOARD_API_TOKEN` | (none) | Bearer token for monitors and scripts (at least 32 characters). Skips the password checks. |
 | `ECHO_TUNES_HISTORY_DAYS` | `15` | Days of play history to keep. `0` keeps none (and deletes what's there). |

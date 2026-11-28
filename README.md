@@ -166,7 +166,8 @@ See [docs/GOOGLE_SIGN_IN.md](docs/GOOGLE_SIGN_IN.md).
 
 **6. Open the dashboard and player** on the private port, `http://localhost:8081` on the
 server (or over an SSH tunnel, your LAN or a VPN; never the internet). Set
-`ECHO_TUNES_DASHBOARD_PASSWORD` to play and queue songs from it, and open it over HTTPS to
+`ECHO_TUNES_DASHBOARD_PASSWORD` to play and queue songs from it (and optionally
+`ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS` to sign in with Google too), and open it over HTTPS to
 install it on your phone. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
 
 ## How it works
@@ -218,6 +219,7 @@ All settings are environment variables (or a `.env` file). Only the first two ar
 | `ECHO_TUNES_DASHBOARD_HOST`            | `127.0.0.1` | Address the dashboard listens on (`0.0.0.0` in the Docker image, so its port can be published privately). |
 | `ECHO_TUNES_DASHBOARD_HOSTS`           | (none)     | Extra host names you open the dashboard by, comma-separated, no port (e.g. `music-dash.lan`). |
 | `ECHO_TUNES_DASHBOARD_PASSWORD`        | (none)     | Password for the dashboard (user `admin`); needed to play, queue and clear history from it. |
+| `ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`   | (none)     | Google accounts that may also sign in to the dashboard, comma-separated. Needs the password and the OAuth client from `echo-tunes login`. |
 | `ECHO_TUNES_DASHBOARD_SESSION_DAYS`    | `180`      | Days a phone or browser stays signed in to the dashboard (`0` = until you sign out). |
 | `ECHO_TUNES_DASHBOARD_API_TOKEN`       | (none)     | Bearer token (32+ random characters) for monitors and scripts; skips the password checks ([how](docs/MONITORING.md)). |
 | `ECHO_TUNES_HISTORY_DAYS`              | `15`       | Days of play history to keep (`0` = keep none; up to 3650).                 |
