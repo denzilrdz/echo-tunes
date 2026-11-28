@@ -305,18 +305,20 @@ def test_taking_an_email_off_the_list_signs_that_account_out(tmp_path) -> None: 
     key = b"k" * 32
     both = frozenset({"me@example.com", "partner@example.com"})
     s = Sessions(key, 180, path, google_emails=both)
-    password = s.create()
+    # A session from the password sign-in (no email). Not named "password": it is a cookie,
+    # and code scanning reads that name as a secret being hashed.
+    plain = s.create()
     me = s.create(email="Me@Example.com")
     partner = s.create(email="partner@example.com")
-    assert s.valid(password) and s.valid(me) and s.valid(partner)
+    assert s.valid(plain) and s.valid(me) and s.valid(partner)
     # Restart with the partner removed from ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS.
     s = Sessions(key, 180, path, google_emails=frozenset({"me@example.com"}))
-    assert s.valid(password) and s.valid(me)
+    assert s.valid(plain) and s.valid(me)
     assert not s.valid(partner)
     assert s.renew(partner) is None
     # Google sign-in turned off: only password sessions remain.
     s = Sessions(key, 180, path)
-    assert s.valid(password) and not s.valid(me)
+    assert s.valid(plain) and not s.valid(me)
     assert len(s) == 1
 
 

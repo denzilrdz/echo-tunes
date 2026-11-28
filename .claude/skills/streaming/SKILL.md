@@ -20,9 +20,12 @@ description: The audio relay and the yt-dlp resolver. Use when changing src/echo
 - The same workers run YouTube searches (`Resolver.search` → `extract.search`, flat
   `ytsearchN:`), through the same `_run` (slots, timeout restarts the pool, one retry). One
   search runs at a time (`MAX_SEARCHES_WAITING` more may wait, then `Busy`), so with 2+ workers
-  a song's link never waits behind searches. `_run` keeps a slot until the job really ends,
-  even when its caller gave up (a cancelled search would otherwise free a slot whose worker is
-  still busy, and the next job's timer would run while it queued, then restart the pool).
+  a song's link never waits behind searches. Each search is its own task (`_search`, shielded
+  like a lookup), so a caller that gives up never cancels it: it keeps the lock and its own
+  `SEARCH_TIMEOUT` until it really ends. `_run` also keeps a slot until its job ends, even if
+  the caller is cancelled (else the next job queues behind a busy worker with its timer
+  running, times out and restarts the pool). The YouTube tab doesn't auto-retry (a timeout
+  restarts the pool).
   `SEARCH_TIMEOUT` is short (Alexa waits); `youtube.BUDGET` bounds the whole search, waiting
   for a free worker included. Live streams have no format 140 (HLS only): `youtube.parse`
   drops them.

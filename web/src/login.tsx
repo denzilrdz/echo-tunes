@@ -47,7 +47,9 @@ function GoogleSignIn() {
           location.replace("/#/");
           return;
         }
-        if (r.status !== 202) {
+        // 202: not approved yet. A 5xx (Google or echo-tunes briefly unreachable, busy) keeps
+        // the code: try again next tick. Anything else (declined, expired, not allowed) ends it.
+        if (r.status !== 202 && r.status < 500) {
           setError(await detail(r));
           setStarted(null);
           return;

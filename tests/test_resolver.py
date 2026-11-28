@@ -194,3 +194,43 @@ async def test_searches_run_one_at_a_time_and_a_crowd_is_refused(
         assert most[0] == 1
     finally:
         r.close()
+
+
+async def test_a_search_given_up_on_keeps_its_lock_so_songs_still_get_a_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Second review of #28: a search whose caller gave up kept its worker but dropped the
+    one-at-a-time lock, so the next search took the other worker and a song's lookup waited
+    behind both."""
+    monkeypatch.setattr(
+        Resolver, "_new_pool", lambda self: ThreadPoolExecutor(max_workers=self._workers)
+    )
+    running, most = [0], [0]
+    lock = threading.Lock()
+
+    def slow_search(query: str, limit: int) -> list[dict[str, Any]]:
+        with lock:
+            running[0] += 1
+            most[0] = max(most[0], running[0])
+        time.sleep(0.5)
+        with lock:
+            running[0] -= 1
+        return []
+
+    monkeypatch.setattr(extract, "search", slow_search)
+    monkeypatch.setattr(extract, "resolve", _fake_resolve)
+    r = Resolver(workers=2, tasks_per_worker=10, cookies=None, cache_dir=None)
+    try:
+        first = asyncio.create_task(r.search("first", 5))
+        await asyncio.sleep(0.05)
+        first.cancel()  # its caller gives up (e.g. past youtube.BUDGET)
+        second = asyncio.create_task(r.search("second", 5))
+        await asyncio.sleep(0.05)
+        t0 = time.monotonic()
+        src = await r.get("fine0000006")
+        assert src.url.endswith("fine0000006")
+        assert time.monotonic() - t0 < 0.3  # one worker stayed free for the song
+        assert await second == []
+        assert most[0] == 1  # the abandoned search still held the lock until it ended
+    finally:
+        r.close()

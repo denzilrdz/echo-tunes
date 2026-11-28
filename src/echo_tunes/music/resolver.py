@@ -73,6 +73,7 @@ class Resolver:
         self._slots = asyncio.Semaphore(workers)
         self._searching = asyncio.Semaphore(1)
         self._search_queue = 0
+        self._search_jobs: set[asyncio.Task[list[dict[str, Any]]]] = set()
 
     async def get(self, video_id: str) -> AudioSource:
         cached = self._cache.get(video_id)
@@ -109,10 +110,21 @@ class Resolver:
         return source
 
     async def search(self, query: str, limit: int) -> list[dict[str, Any]]:
-        """YouTube's search results, as plain data from a worker (see music/youtube.py)."""
+        """YouTube's search results, as plain data from a worker (see music/youtube.py).
+
+        Each search runs as its own task, like a lookup: a caller that gives up (past its
+        budget) doesn't cancel it, so it keeps the one-at-a-time lock and its own
+        SEARCH_TIMEOUT (which restarts the pool if the worker hangs) until it really ends.
+        """
         if self._search_queue >= MAX_SEARCHES_WAITING:
             raise Busy
         self._search_queue += 1
+        job = asyncio.create_task(self._search(query, limit))
+        self._search_jobs.add(job)
+        job.add_done_callback(self._search_finished)
+        return await asyncio.shield(job)
+
+    async def _search(self, query: str, limit: int) -> list[dict[str, Any]]:
         try:
             async with self._searching:
                 result: list[dict[str, Any]] = await self._run(
@@ -121,6 +133,11 @@ class Resolver:
                 return result
         finally:
             self._search_queue -= 1
+
+    def _search_finished(self, job: asyncio.Task[list[dict[str, Any]]]) -> None:
+        self._search_jobs.discard(job)
+        if not job.cancelled():
+            job.exception()  # mark it retrieved: its caller may have given up
 
     async def _run(self, limit: float, fn: Callable[..., Any], *args: Any) -> Any:
         """Run ``fn`` in a worker. ``limit`` (seconds) counts only time spent running.
@@ -214,7 +231,7 @@ class Resolver:
         self._cache.pop(video_id)
 
     def close(self) -> None:
-        for task in [*self._background, *self._inflight.values()]:
+        for task in [*self._background, *self._inflight.values(), *self._search_jobs]:
             task.cancel()
         self._pool.shutdown(wait=False, cancel_futures=True)
 
