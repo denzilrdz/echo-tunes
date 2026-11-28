@@ -42,7 +42,8 @@ description: Security rules for echo-tunes. Use before merging anything that tou
       Google sign-in (`google_login.py`, only with a password set): device flow, scope
       `openid email`, ID token from the token endpoint checked for issuer, audience, expiry,
       `email_verified` and the `DASHBOARD_GOOGLE_EMAILS` allowlist; then the same session as
-      the password. Pending flows capped (`MAX_PENDING`) and expiring; the browser polls with
+      the password, plus the email: a session counts only while its email is still listed
+      (`Sessions(google_emails=...)`). Pending flows capped (`MAX_PENDING`) and expiring; the browser polls with
       a 256-bit flow secret; starts are rate-limited (`MAX_STARTS`/min) and the cap is checked before calling Google; an in-use flow is never evicted; no Google token is kept or revoked (revoking would end the YouTube
       Music grant on the same client). `/api/login/options`, `/api/login/google[/poll]` are public.
       Monitors use `DASHBOARD_API_TOKEN` (Bearer, >= 32 chars, no gate); scripts may use Basic

@@ -221,9 +221,13 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
     api_token = deps.api_token.encode() if deps.api_token else None
     # Slow digests of the expected values (the password, the Basic header), worked out once.
     wanted_digests: dict[str, bytes] = {}
+    google = deps.google if deps.password else None
     sessions = (
         Sessions(
-            session_key(deps.session_secret, deps.password), deps.session_days, deps.sessions_file
+            session_key(deps.session_secret, deps.password),
+            deps.session_days,
+            deps.sessions_file,
+            google_emails=google.emails if google is not None else frozenset(),
         )
         if deps.password
         else None
@@ -361,8 +365,6 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             path="/",
         )
 
-    google = deps.google if deps.password else None
-
     @app.get("/api/login/options")
     async def login_options() -> dict[str, bool]:
         """What the sign-in page offers (no secrets: just whether Google sign-in is on)."""
@@ -391,7 +393,7 @@ def create_dashboard(deps: DashboardDeps) -> FastAPI:
             return JSONResponse({"status": "pending"}, status_code=202)
         resp = JSONResponse({"status": "ok"})
         assert sessions is not None
-        set_cookie(resp, request, sessions.create())
+        set_cookie(resp, request, sessions.create(email=email))
         return resp
 
     @app.post("/api/logout")

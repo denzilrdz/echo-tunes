@@ -33,7 +33,10 @@ function GoogleSignIn() {
   useEffect(() => {
     if (!started) return;
     let stopped = false;
+    let checking = false;
     const poll = async () => {
+      if (checking) return; // one check at a time, whatever woke us
+      checking = true;
       try {
         const r = await fetch("/api/login/google/poll", {
           ...JSON_POST,
@@ -51,13 +54,26 @@ function GoogleSignIn() {
         }
       } catch {
         // a dropped connection: keep trying until the code expires
+      } finally {
+        checking = false;
       }
       if (!stopped) timer.current = window.setTimeout(poll, started.interval * 1000);
     };
     timer.current = window.setTimeout(poll, started.interval * 1000);
+    // Back from approving the code in another tab: a phone may have suspended this page's
+    // timers, so check at once instead of waiting for the next tick.
+    const back = () => {
+      if (document.visibilityState !== "visible" || stopped) return;
+      window.clearTimeout(timer.current);
+      void poll();
+    };
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("focus", back);
     return () => {
       stopped = true;
       window.clearTimeout(timer.current);
+      document.removeEventListener("visibilitychange", back);
+      window.removeEventListener("focus", back);
     };
   }, [started]);
 

@@ -163,17 +163,26 @@ async def test_pending_sign_ins_are_capped_and_in_use_ones_are_never_pushed_out(
     with pytest.raises(GoogleLoginError):  # the rest are fresh now: refused
         await g.start()
     assert mine in g._flows
-    # Abandoned sign-ins go after IDLE_SECONDS; the one still checked on stays.
-    clock[0] += google_login.IDLE_SECONDS - 5
-    assert await g.poll(mine) is None
-    clock[0] += 10
-    await g.start()
-    assert len(g) == 2 and mine in g._flows
-    # And everything expires.
+    # Everything expires.
     clock[0] += google_login.FLOW_SECONDS + 1
     with pytest.raises(GoogleLoginError):
         await g.poll(mine)
     assert len(g) == 0
+    await g.aclose()
+
+
+async def test_a_sign_in_survives_its_page_being_suspended(
+    google: FakeGoogle, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of #28: a phone suspends the sign-in page while you approve the code in another
+    tab; it came back to "This sign-in code expired" although Google had approved it."""
+    clock = [1000.0]
+    monkeypatch.setattr(google_login.time, "monotonic", lambda: clock[0])
+    g = google.login()
+    flow = (await g.start())["flow"]
+    clock[0] += 5 * 60  # five quiet minutes: approving on another tab, phone asleep
+    google.answers.append({"id_token": id_token()})
+    assert await g.poll(flow) == "me@example.com"
     await g.aclose()
 
 
@@ -286,3 +295,36 @@ async def test_odd_numbers_from_google_fall_back_to_defaults() -> None:
     started = await g.start()
     assert started["interval"] == 5.0 and started["expires_in"] == google_login.FLOW_SECONDS
     await g.aclose()
+
+
+def test_taking_an_email_off_the_list_signs_that_account_out(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Review of #28: Google sessions outlived their place on the list (up to 180 days)."""
+    from echo_tunes.sessions import Sessions
+
+    path = tmp_path / "sessions.json"
+    key = b"k" * 32
+    both = frozenset({"me@example.com", "partner@example.com"})
+    s = Sessions(key, 180, path, google_emails=both)
+    password = s.create()
+    me = s.create(email="Me@Example.com")
+    partner = s.create(email="partner@example.com")
+    assert s.valid(password) and s.valid(me) and s.valid(partner)
+    # Restart with the partner removed from ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS.
+    s = Sessions(key, 180, path, google_emails=frozenset({"me@example.com"}))
+    assert s.valid(password) and s.valid(me)
+    assert not s.valid(partner)
+    assert s.renew(partner) is None
+    # Google sign-in turned off: only password sessions remain.
+    s = Sessions(key, 180, path)
+    assert s.valid(password) and not s.valid(me)
+    assert len(s) == 1
+
+
+def test_sessions_saved_before_google_sign_in_still_load(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from echo_tunes.sessions import Sessions
+
+    path = tmp_path / "sessions.json"
+    old = Sessions(b"k" * 32, 180, path)
+    cookie = old.create()
+    assert json.loads(path.read_text()) == {cookie.split(".")[0]: int(cookie.split(".")[1])}
+    assert Sessions(b"k" * 32, 180, path).valid(cookie)

@@ -12,10 +12,10 @@ Core 3.1.3.7); its issuer, audience, expiry and verified email are. Only address
 ``ECHO_TUNES_DASHBOARD_GOOGLE_EMAILS`` get in. Google's tokens are dropped at once and never
 revoked: revoking would also end the YouTube Music sign-in made with the same client.
 
-Pending sign-ins are capped (``MAX_PENDING``) and expire after ``FLOW_SECONDS``. One the
-browser stops checking on (the page was closed) is dropped after ``IDLE_SECONDS``; when the
-cap is reached a new sign-in may push out one that nobody has checked on for ``STALE_SECONDS``
-(an open page checks every few seconds), never one in use, else it's refused. Starts are
+Pending sign-ins are capped (``MAX_PENDING``) and expire after ``FLOW_SECONDS``. A sign-in
+whose page went quiet is kept (a phone suspends a page in the background while you approve the
+code in another tab); only when the cap is reached may a new one push out a sign-in nobody has
+checked on for ``STALE_SECONDS``, never one in use, else the new one is refused. Starts are
 limited to ``MAX_STARTS`` a minute in total, so unauthenticated callers can't make the server
 call Google without limit.
 
@@ -45,8 +45,9 @@ SCOPE = "openid email"
 ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
 MAX_PENDING = 8  # sign-ins waiting for approval at once
 FLOW_SECONDS = 600  # a code is good for this long here (Google allows longer)
-IDLE_SECONDS = 45.0  # a sign-in nobody has checked on for this long is dropped
-STALE_SECONDS = 15.0  # ... and when the table is full, one unchecked this long may be pushed out
+# When the table is full, a sign-in nobody has checked on for this long may be pushed out.
+# Long enough to approve a code in another tab while the phone suspends this page.
+STALE_SECONDS = 120.0
 MAX_STARTS = 10  # sign-ins started per minute, in total
 CLOCK_SKEW = 300  # seconds of leeway on the token's expiry
 
@@ -203,11 +204,13 @@ class GoogleLogin:
 
     def _prune(self) -> None:
         now = time.monotonic()
-        idle = [
-            k for k, f in self._flows.items() if now - f.seen > max(IDLE_SECONDS, 3 * f.interval)
-        ]
-        for key in {*(k for k, f in self._flows.items() if f.expires <= now), *idle}:
+        for key in [k for k, f in self._flows.items() if f.expires <= now]:
             del self._flows[key]
+
+    @property
+    def emails(self) -> frozenset[str]:
+        """The accounts allowed in (sessions check them again on every request)."""
+        return self._emails
 
     def __len__(self) -> int:
         return len(self._flows)

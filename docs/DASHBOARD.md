@@ -145,8 +145,12 @@ once you approve it, and the device stays signed in like it does with the passwo
 - Only the accounts listed get in. echo-tunes asks Google only for the account's email address
   and keeps none of Google's tokens.
 - Only approve a code you started yourself: whoever started the sign-in gets the session (the
-  page says so too). Each code expires after 10 minutes; a sign-in whose page was closed is
-  dropped after 45 seconds. At most 8 wait at once and 10 can start a minute.
+  page says so too). Each code expires after 10 minutes. At most 8 sign-ins wait at once and
+  10 can start a minute, for everyone together: someone on your network could keep Google
+  sign-in busy that way (never get in), and the password still works.
+- **Taking an email off the list signs that account out** everywhere (after a restart, like any
+  setting change). Removing the setting altogether signs out every Google sign-in; password
+  sign-ins stay.
 - Google keeps at most 100 sign-in tokens per account for one OAuth client and drops the oldest
   beyond that, so after very many dashboard sign-ins with the account you use for YouTube
   Music, run `echo-tunes login` again if your library stops loading.

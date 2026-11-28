@@ -158,7 +158,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
         ),
     )
     closables: list[object] = [resolver, store, history, client, probe_client, services.verifier]
-    return services, [*closables, catalog, *([google] if google else [])]
+    return services, [*closables, catalog, *([google] if google is not None else [])]
 
 
 def _google_login(settings: Settings) -> GoogleLogin | None:
