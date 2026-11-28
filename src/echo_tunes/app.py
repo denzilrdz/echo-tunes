@@ -90,17 +90,21 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
         limits=httpx.Limits(max_connections=8, max_keepalive_connections=2),
         follow_redirects=True,
     )
+    oauth_client = account.load_client(
+        settings.data_dir, settings.google_client_id, settings.google_client_secret
+    )
+    yt, signed_in = account.make_client(
+        settings.data_dir, settings.language, settings.location, oauth_client
+    )
     catalog = YTMusicCatalog(
-        *account.make_client(
-            settings.data_dir,
-            settings.language,
-            settings.location,
-            account.load_client(
-                settings.data_dir, settings.google_client_id, settings.google_client_secret
-            ),
-        ),
+        yt,
+        signed_in,
         send_history=settings.send_history,
         youtube=YouTubeSearch(resolver.search),
+        # Search and radio carry on without the account if YouTube Music rejects it.
+        anonymous=account.anonymous_client(settings.language, settings.location)
+        if signed_in
+        else None,
     )
     skill = Skill(
         SkillConfig(
@@ -145,7 +149,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             allowed_hosts=frozenset(
                 [*settings.dashboard_hosts, (settings.public_url.host or "").lower()]
             ),
-            run_checks=lambda: _setup_checks(settings, catalog, resolver, password),
+            run_checks=lambda: _setup_checks(settings, catalog, resolver, password, oauth_client),
             test_play=lambda: _test_play(skill),
             catalog=catalog,
             skill=skill,
@@ -181,7 +185,11 @@ def _google_login(settings: Settings) -> GoogleLogin | None:
 
 
 async def _setup_checks(
-    settings: Settings, catalog: YTMusicCatalog, resolver: Resolver, password: str | None
+    settings: Settings,
+    catalog: YTMusicCatalog,
+    resolver: Resolver,
+    password: str | None,
+    oauth_client: account.ClientSecrets | None = None,
 ) -> dict[str, Any]:
     async def resolve(video_id: str) -> tuple[str, dict[str, str]]:
         src = await resolver.get(video_id)
@@ -195,6 +203,7 @@ async def _setup_checks(
         last_alexa=METRICS.last_alexa_at,
         password_set=bool(password),
         library=catalog.liked_songs,
+        diagnose=lambda: account.diagnose(settings.data_dir, oauth_client),
     )
     return summary(checks)
 

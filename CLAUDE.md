@@ -109,6 +109,11 @@ events (skill `testing`). `uv run pytest` must pass before every commit; CI also
 - **YouTube links 403 for ~2 s after they're issued**; `StreamRelay` waits it out
   (`WARMUP_SECONDS`). Links are tied to the server's IP, so the Echo can't fetch YouTube
   directly: audio is always relayed.
+- **A custom OAuth client needs "YouTube Data API v3" enabled** in its Cloud project, or YouTube
+  Music answers every signed-in call with HTTP 400 "Request contains an invalid argument".
+  `YTMusicCatalog` then falls back to an anonymous client for search/radio/browsing
+  (`_call`; personal calls use `_mine` and raise `SignInRejected`); `account.diagnose` asks the
+  Data API why, for doctor.
 - **yt-dlp needs Deno** (JavaScript challenges). The image ships it; `doctor` checks it.
 - **Python 3.15 in the image, 3.13 minimum.** CI tests both.
 - **pydantic-settings parses list env vars as JSON** unless the field is `NoDecode`

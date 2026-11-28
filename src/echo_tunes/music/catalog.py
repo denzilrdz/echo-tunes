@@ -7,6 +7,7 @@ import asyncio
 import difflib
 import logging
 import re
+import time
 import unicodedata
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -58,6 +59,44 @@ class Collection:
 
 class NotSignedIn(Exception):
     """The request needs a YouTube Music account; see ``echo-tunes login``."""
+
+
+class SignInRejected(NotSignedIn):
+    """Signed in, but YouTube Music rejects the account (HTTP 400/401/403): personal features
+    fail, while search, radio and browsing carry on without the account (``echo-tunes doctor``
+    says why)."""
+
+
+# How long to keep searching without the account after YouTube Music rejected it, before
+# trying the account again (a fixed sign-in, e.g. after enabling an API, is picked up then).
+REJECTED_FOR = 600.0
+# A retry without the account gets what's left of one call's time, at least RETRY_MIN: the first
+# rejected "play ..." still answers within Alexa's ~8 s.
+RETRY_GRACE = 1.5
+RETRY_MIN = 2.0
+_REJECTED = re.compile(r"HTTP (400|401|403)\b|status_code: 40[013]\b")
+# ytmusicapi refreshes the token before each signed-in call; when Google refuses, the call fails
+# there: 401 unauthorized_client / invalid_client raise these, other 401s a YTMusicServerError
+# "OAuth request error. status_code: 401", and 400 invalid_grant (revoked, or expired after
+# 7 days in Testing mode) a KeyError('access_token').
+_SIGN_IN_ERRORS = frozenset({"BadOAuthClient", "UnauthorizedOAuthClient"})
+
+
+def _rejected(exc: BaseException) -> bool:
+    """The signed-in account was refused (by YouTube Music, or by Google when refreshing its
+    token): not a network or server error."""
+    name = type(exc).__name__
+    if name in _SIGN_IN_ERRORS or (isinstance(exc, KeyError) and exc.args == ("access_token",)):
+        return True
+    return name == "YTMusicServerError" and bool(_REJECTED.search(str(exc)))
+
+
+def _why(exc: BaseException) -> str:
+    """A short, token-free description of a rejection."""
+    if isinstance(exc, KeyError):
+        return "Google refused to renew the sign-in (revoked, or expired)"
+    text = " ".join(str(exc).split())
+    return text.split(", content:")[0][:160]  # never the response body of a token request
 
 
 class Catalog(Protocol):
@@ -200,8 +239,13 @@ class YTMusicCatalog:
         *,
         send_history: bool = False,
         youtube: youtube.YouTubeSearch | None = None,
+        anonymous: Any = None,
     ) -> None:
         self._yt = client
+        # Without the account, for when YouTube Music rejects it (signed in only).
+        self._anon = anonymous if signed_in else None
+        self._rejected_until = 0.0
+        self.rejection: str | None = None  # the last rejection, short (for doctor)
         self._youtube = youtube
         self._signed_in = signed_in
         self._send_history = send_history and signed_in
@@ -242,7 +286,7 @@ class YTMusicCatalog:
     # --- your library (signed in) -----------------------------------------------------------
     async def liked_songs(self) -> Collection:
         self._need_account()
-        data = await self._call("get_liked_songs", limit=LIBRARY_LIMIT)
+        data = await self._mine("get_liked_songs", limit=LIBRARY_LIMIT)
         return Collection("your liked songs", _tracks((data or {}).get("tracks")))
 
     async def playlist(self, name: str) -> Collection | None:
@@ -252,7 +296,7 @@ class YTMusicCatalog:
         i = best_match(name, titles)
         if i is None:
             return None
-        data = await self._call("get_playlist", playlists[i]["playlistId"], limit=LIBRARY_LIMIT)
+        data = await self._mine("get_playlist", playlists[i]["playlistId"], limit=LIBRARY_LIMIT)
         return Collection(titles[i], _tracks((data or {}).get("tracks")))
 
     async def mix(self, name: str) -> Collection | None:
@@ -275,22 +319,22 @@ class YTMusicCatalog:
                 return None  # asked for a specific mix that isn't there: say so
             i = next((k for k, t in enumerate(titles) if "supermix" in t.lower()), 0)
         chosen = mixes[i]
-        data = await self._call("get_watch_playlist", playlistId=chosen["playlistId"], limit=50)
+        data = await self._mine("get_watch_playlist", playlistId=chosen["playlistId"], limit=50)
         return Collection(chosen["title"], _tracks((data or {}).get("tracks")))
 
     async def like(self, video_id: str) -> None:
         self._need_account()
         from ytmusicapi import LikeStatus
 
-        await self._call("rate_song", video_id, LikeStatus.LIKE)
+        await self._mine("rate_song", video_id, LikeStatus.LIKE)
 
     async def played(self, video_id: str) -> None:
         """Add a song to your YouTube history, so recommendations learn (opt-in)."""
         if not self._send_history:
             return
         try:
-            song = await self._call("get_song", video_id)
-            await self._call("add_history_item", song)
+            song = await self._mine("get_song", video_id)
+            await self._mine("add_history_item", song)
         except Exception as exc:
             log.info("couldn't add %s to history: %s", video_id, exc)
 
@@ -370,7 +414,12 @@ class YTMusicCatalog:
             if item_id.startswith("RD"):  # mixes and radios
                 data = await self._call("get_watch_playlist", playlistId=item_id, limit=50)
                 return "Mix", _tracks((data or {}).get("tracks"))
-            data = await self._call("get_playlist", item_id, limit=LIBRARY_LIMIT)
+            try:
+                data = await self._call("get_playlist", item_id, limit=LIBRARY_LIMIT)
+            except Exception as exc:
+                if self._signed_in and self._rejecting():  # likely your own, private playlist
+                    raise SignInRejected(self.rejection) from exc
+                raise
             return str((data or {}).get("title") or "Playlist"), _tracks((data or {}).get("tracks"))
         if kind == "album":
             data = await self._call("get_album", item_id)
@@ -390,7 +439,10 @@ class YTMusicCatalog:
         cached = self._browsed.get(key)
         if cached is None:
             cached = shape(await fetch())
-            self._browsed.set(key, cached)
+            # Answers made without a rejected account aren't kept: the personal ones come back
+            # as soon as the account works again.
+            if not self._rejecting():
+                self._browsed.set(key, cached)
         return cast(T, cached)
 
     # --- helpers --------------------------------------------------------------------------------
@@ -401,14 +453,59 @@ class YTMusicCatalog:
     async def _cached_list(self, key: str, method: str, **kwargs: Any) -> list[dict[str, Any]]:
         cached = self._lists.get(key)
         if cached is None:
-            cached = list(await self._call(method, **kwargs) or [])
+            cached = list(await self._mine(method, **kwargs) or [])
             self._lists.set(key, cached)
         return cached
 
+    def _rejecting(self) -> bool:
+        return time.monotonic() < self._rejected_until
+
     async def _call(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        """Search, radio, browsing: with the account, or without it while YouTube Music
+        rejects the account (a bad sign-in must never stop "play ...")."""
+        if self._anon is not None and self._rejecting():
+            return await self._run(self._anon, CALL_TIMEOUT, method, *args, **kwargs)
+        t0 = time.monotonic()
+        try:
+            return await self._run(self._yt, CALL_TIMEOUT, method, *args, **kwargs)
+        except Exception as exc:
+            if self._anon is None or not _rejected(exc):
+                raise
+            left = max(RETRY_MIN, CALL_TIMEOUT + RETRY_GRACE - (time.monotonic() - t0))
+            # If this fails too, it wasn't the sign-in: that error goes up, nothing is switched.
+            result = await self._run(self._anon, left, method, *args, **kwargs)
+            self._reject(exc)
+            return result
+
+    async def _mine(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        """Your library, likes, mixes and history: only with the account."""
+        try:
+            return await self._run(self._yt, CALL_TIMEOUT, method, *args, **kwargs)
+        except Exception as exc:
+            if not (self._signed_in and _rejected(exc)):
+                raise
+            self._reject(exc)
+            raise SignInRejected(self.rejection) from exc
+
+    def _reject(self, exc: BaseException) -> None:
+        first = self.rejection is None or not self._rejecting()
+        self.rejection = _why(exc)
+        self._rejected_until = time.monotonic() + REJECTED_FOR
+        if first:
+            log.warning(
+                "YouTube Music rejected the signed-in account (%s); search and radio carry on "
+                "without it. Run `echo-tunes doctor` to see why.",
+                self.rejection,
+            )
+
+    async def _run(
+        self, client: Any, seconds: float, method: str, /, *args: Any, **kwargs: Any
+    ) -> Any:
+        """``client.method(*args, **kwargs)`` in the pool, within ``seconds`` (positional-only:
+        ytmusicapi methods take keywords such as ``limit``)."""
         loop = asyncio.get_running_loop()
-        fn = getattr(self._yt, method)
-        async with asyncio.timeout(CALL_TIMEOUT):
+        fn = getattr(client, method)
+        async with asyncio.timeout(seconds):
             return await loop.run_in_executor(self._pool, lambda: fn(*args, **kwargs))
 
     def close(self) -> None:

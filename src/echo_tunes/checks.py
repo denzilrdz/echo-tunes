@@ -14,7 +14,7 @@ import httpx
 
 from echo_tunes.config import Settings
 from echo_tunes.music import extract
-from echo_tunes.music.catalog import Track
+from echo_tunes.music.catalog import SignInRejected, Track
 
 TEST_SONG = "dQw4w9WgXcQ"  # long-lived and available everywhere; only used for self-tests
 DOCS = "https://github.com/denzilrdz/echo-tunes/blob/main/docs/"
@@ -35,6 +35,7 @@ class Check:
 Search = Callable[[str], Awaitable[Track | None]]
 Resolve = Callable[[str], Awaitable[tuple[str, dict[str, str]]]]
 Library = Callable[[], Awaitable[Any]]  # loads the liked songs (a Collection)
+Diagnose = Callable[[], Awaitable[str]]  # why YouTube Music rejects the sign-in
 
 
 async def run_checks(
@@ -46,6 +47,7 @@ async def run_checks(
     last_alexa: float | None = None,
     password_set: bool | None = None,
     library: Library | None = None,
+    diagnose: Diagnose | None = None,
 ) -> list[Check]:
     checks = [
         Check(
@@ -63,7 +65,7 @@ async def run_checks(
     if last_alexa is not None:
         checks.append(_alexa(last_alexa))
     if signed_in and library is not None:
-        checks.append(await _library(library))
+        checks.append(await _library(library, diagnose))
     elif signed_in is not None:
         checks.append(
             Check("YouTube Music account", "ok", "Signed in", "")
@@ -90,11 +92,27 @@ async def run_checks(
     return checks
 
 
-async def _library(library: Library) -> Check:
+async def _library(library: Library, diagnose: Diagnose | None = None) -> Check:
     name = "YouTube Music account"
     try:
         async with asyncio.timeout(15):
             liked = await library()
+    except SignInRejected as exc:
+        why = "Sign in again: echo-tunes logout, then echo-tunes login"
+        if diagnose is not None:
+            try:
+                async with asyncio.timeout(20):
+                    why = await diagnose()
+            except Exception as dexc:  # the diagnosis is a bonus; the check still reports
+                why = f"{why} (couldn't ask Google why: {type(dexc).__name__})"
+        return Check(
+            name,
+            "fail",
+            f"Signed in, but YouTube Music rejects the account ({exc}); search, radio and "
+            "playback carry on without it"[:300],
+            why,
+            DOCS + "GOOGLE_SIGN_IN.md#youtube-music-rejects-the-sign-in",
+        )
     except Exception as exc:
         return Check(
             name,
@@ -160,7 +178,9 @@ async def _search(search: Search) -> Check:
     try:
         track = await search("never gonna give you up")
     except Exception as exc:
-        return Check("YouTube Music search", "fail", _short(exc), "Is the internet reachable?")
+        refused = type(exc).__name__ == "YTMusicServerError"
+        hint = "YouTube Music refused the search" if refused else "Is the internet reachable?"
+        return Check("YouTube Music search", "fail", _short(exc), hint)
     if track is None:
         return Check("YouTube Music search", "fail", "no results")
     return Check("YouTube Music search", "ok", f"found {track.spoken}")

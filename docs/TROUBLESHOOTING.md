@@ -79,6 +79,12 @@ On cloud servers (AWS, Google Cloud, Azure, Oracle, Hetzner, …) YouTube often 
 3. See yt-dlp's guide to
    [PO tokens](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for advanced options.
 
+## Liked songs and playlists stop working, but other songs play
+
+YouTube Music is rejecting your sign-in; echo-tunes carries on without it. Run
+`echo-tunes doctor`: it says why. See
+[YouTube Music rejects the sign-in](GOOGLE_SIGN_IN.md#youtube-music-rejects-the-sign-in).
+
 ## Songs stop working after a while
 
 YouTube changes things every few weeks, and yt-dlp releases a fix within days. Update:

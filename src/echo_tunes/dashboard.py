@@ -44,7 +44,7 @@ from echo_tunes.health import memory_mb
 from echo_tunes.history import History
 from echo_tunes.metrics import CONTENT_TYPE, METRICS
 from echo_tunes.music import browse
-from echo_tunes.music.catalog import NotSignedIn, Track
+from echo_tunes.music.catalog import NotSignedIn, SignInRejected, Track
 from echo_tunes.music.resolver import Busy
 from echo_tunes.player.state import PlayerState
 from echo_tunes.player.store import StateStore
@@ -586,6 +586,10 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
     async def youtube(call: Awaitable[Any]) -> Any:
         try:
             return await call
+        except SignInRejected as exc:
+            raise HTTPException(
+                409, "YouTube Music rejects your sign-in; see Setup (or echo-tunes doctor)."
+            ) from exc
         except NotSignedIn as exc:
             raise HTTPException(409, "Sign in to YouTube Music first: echo-tunes login") from exc
         except Busy as exc:

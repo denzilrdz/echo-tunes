@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.5.0] - 2026-11-28
 
+### Fixed
+
+- A YouTube Music sign-in that YouTube rejects ("HTTP 400: Request contains an invalid argument")
+  no longer breaks every search: search, radio and browsing carry on without the account, and
+  only your own music (likes, playlists, mixes) says it's unavailable. `echo-tunes doctor` now
+  asks Google why and names the fix, usually enabling the **YouTube Data API v3** in the Google
+  Cloud project of your OAuth client (see docs/GOOGLE_SIGN_IN.md).
+
 ### Added
 
 - **Play anything on YouTube, not just YouTube Music.** Say *"Alexa, ask my tunes to play
