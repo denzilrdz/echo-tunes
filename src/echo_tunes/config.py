@@ -67,11 +67,11 @@ class Settings(BaseSettings):
     dashboard_password: SecretStr | None = Field(
         default=None, description="Optional password for the dashboard and /metrics (user: admin)."
     )
-    # For scripts and monitors (Uptime Kuma, Prometheus): sent as "Authorization: Bearer
-    # <token>", it skips the password checks (and their queue) entirely. Long and random.
     # Google accounts that may sign in to the dashboard (as well as the password), e.g.
     # "you@gmail.com,partner@gmail.com". Uses the OAuth client of `echo-tunes login`.
     dashboard_google_emails: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # For scripts and monitors (Uptime Kuma, Prometheus): sent as "Authorization: Bearer
+    # <token>", it skips the password checks (and their queue) entirely. Long and random.
     dashboard_api_token: SecretStr | None = Field(
         default=None, description="Optional bearer token for the dashboard API and /metrics."
     )

@@ -273,3 +273,16 @@ def test_google_sign_in_refuses_other_sites_and_bad_input(skill: Skill, google: 
     assert c.post("/api/login/google/poll", json={"flow": "short"}).status_code == 422
     assert c.post("/api/login/google/poll", json={"flow": "x" * 40}).status_code == 410
     assert google.device_calls == []
+
+
+async def test_odd_numbers_from_google_fall_back_to_defaults() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"device_code": "d", "user_code": "C", "interval": "soon", "expires_in": None},
+        )
+
+    g = GoogleLogin(CLIENT, "s", ALLOWED, httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    started = await g.start()
+    assert started["interval"] == 5.0 and started["expires_in"] == google_login.FLOW_SECONDS
+    await g.aclose()

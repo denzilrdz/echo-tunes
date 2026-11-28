@@ -42,7 +42,7 @@ flowchart LR
 
 1. **"Alexa, ask my tunes to play Blinding Lights."** Alexa sends a signed `IntentRequest`
    (`PlayIntent`, `query = "blinding lights"`) to `POST /alexa`.
-2. echo-tunes verifies it, searches YouTube Music, and **immediately starts preparing the audio
+2. echo-tunes verifies it, searches YouTube Music (or all of YouTube for "... on YouTube"), and **immediately starts preparing the audio
    link** in a worker. While that runs it fetches a radio of similar songs and saves the queue.
 3. It answers with speech and an `AudioPlayer.Play` directive whose URL is
    `https://<you>/stream/<video>.<expiry>.<signature>.m4a`.

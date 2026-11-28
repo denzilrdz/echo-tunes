@@ -17,7 +17,7 @@ the right.
 | Page | What you see |
 | --- | --- |
 | **Home** | Quick picks, your mixes and library (when the server is signed in to YouTube Music), charts, top artists, and moods & genres. A *Finish setup* note appears only if a setup check fails. |
-| **Search** | Results as you type, filtered by songs, albums, artists or playlists: a top result, songs, then shelves. Recent searches are remembered on this device. |
+| **Search** | Results as you type, filtered by songs, albums, artists or playlists: a top result, songs, then shelves. The **YouTube** tab searches all of YouTube instead (covers, live sets, talks; live streams are left out). Recent searches are remembered on this device. |
 | **Library** | Your playlists, *Liked songs* first (needs `echo-tunes login` on the server). |
 | **Devices** | A card for this browser and each Echo: what's playing, the progress, what's next, what each can do, and buttons to play there or make it the favourite. |
 | **Server** (⚙ on Home on phones, the sidebar on computers) | **Status** (health, plus copy-ready settings for Uptime Kuma, Prometheus and Home Assistant, see [MONITORING.md](MONITORING.md)), **Stats**, **History** (filter by device, period and song; *Clear history*), **Setup** (the `echo-tunes doctor` checklist and a **Test play** button that plays a song in your browser through YouTube, this server and your public address, exactly like an Echo) and **Settings** (theme, favourite device, install, sign out). |
@@ -139,7 +139,7 @@ once you approve it, and the device stays signed in like it does with the passwo
 
 - It uses the **OAuth client you created for [`echo-tunes login`](GOOGLE_SIGN_IN.md)**
   (or `ECHO_TUNES_GOOGLE_CLIENT_ID`/`_SECRET`). Nothing else to set up in Google Cloud.
-- It works on a **LAN address over plain HTTP** (`http://192.168.1.20:8081`). Google's usual
+- It works on a **LAN address over plain HTTP** (`http://<the server's LAN IP>:8081`). Google's usual
   "redirect back to the site" sign-in only allows HTTPS addresses with a public domain name,
   which a private dashboard doesn't have; this kind of sign-in has no redirect.
 - Only the accounts listed get in. echo-tunes asks Google only for the account's email address

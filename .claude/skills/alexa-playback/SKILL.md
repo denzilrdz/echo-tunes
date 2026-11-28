@@ -49,6 +49,11 @@ echo-tunes is a custom skill with the AudioPlayer interface. Amazon reference:
 every locale from one definition. Synonyms (e.g. "second mix" → `mix 2`) reach the skill as
 entity resolutions: read them with `_slot(intent, name, resolved=True)`.
 
+`PlayYouTubeIntent` ("play ... on YouTube") searches all of YouTube (`catalog.search_video`)
+instead of YouTube Music. Alexa often sends "X on YouTube" to plain `PlayIntent` instead, so
+`_youtube_query` strips a trailing "on/from/off YouTube" and switches the search too. After
+changing the voice model, users must paste it into the developer console (say so in CHANGELOG).
+
 ## Checklist for a playback change
 
 1. Write the test first in `tests/test_skill.py`, in the order the Echo sends events

@@ -589,7 +589,7 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
             raise HTTPException(422, str(exc)) from exc
         except Exception as exc:
             METRICS.youtube_errors.inc()
-            raise HTTPException(502, "YouTube Music didn't answer; try again.") from exc
+            raise HTTPException(502, "YouTube didn't answer; try again.") from exc
 
     def items(xs: list[browse.Item]) -> list[dict[str, Any]]:
         return [x.to_dict() for x in xs]

@@ -1,5 +1,5 @@
 """Search, radio and (when signed in) your library, from YouTube Music via ytmusicapi; and
-search across all of YouTube (``music.youtube``) for "play ... on YouTube"."""
+search across all of YouTube (``music/youtube.py``) for "play ... on YouTube"."""
 
 from __future__ import annotations
 

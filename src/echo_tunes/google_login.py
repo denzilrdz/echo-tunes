@@ -99,8 +99,8 @@ class GoogleLogin:
         url = data.get("verification_url") or data.get("verification_uri")
         if not isinstance(url, str) or not url.startswith("https://"):
             url = "https://www.google.com/device"
-        interval = min(max(float(data.get("interval") or 5), 1.0), 30.0)
-        lifetime = min(float(data.get("expires_in") or FLOW_SECONDS), FLOW_SECONDS)
+        interval = min(max(_number(data.get("interval"), 5.0), 1.0), 30.0)
+        lifetime = min(max(_number(data.get("expires_in"), FLOW_SECONDS), 30.0), FLOW_SECONDS)
         now = time.monotonic()
         self._prune()
         if not self._make_room(now):  # others started while Google answered
@@ -229,6 +229,15 @@ def _claims(id_token: Any) -> dict[str, Any]:
     if not isinstance(claims, dict):
         raise GoogleLoginError(502, "Google's identity couldn't be read. Try again.")
     return claims
+
+
+def _number(value: Any, default: float) -> float:
+    """A positive number from Google's answer, else ``default``."""
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return default
+    return n if n > 0 and n == n else default  # n == n: not NaN
 
 
 def _error(data: dict[str, Any]) -> str:
