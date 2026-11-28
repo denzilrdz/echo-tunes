@@ -70,12 +70,33 @@ class SignInRejected(NotSignedIn):
 # How long to keep searching without the account after YouTube Music rejected it, before
 # trying the account again (a fixed sign-in, e.g. after enabling an API, is picked up then).
 REJECTED_FOR = 600.0
-_REJECTED = re.compile(r"HTTP (400|401|403)\b")
+# A retry without the account gets what's left of one call's time, at least RETRY_MIN: the first
+# rejected "play ..." still answers within Alexa's ~8 s.
+RETRY_GRACE = 1.5
+RETRY_MIN = 2.0
+_REJECTED = re.compile(r"HTTP (400|401|403)\b|status_code: 40[013]\b")
+# ytmusicapi refreshes the token before each signed-in call; when Google refuses, the call fails
+# there: 401 unauthorized_client / invalid_client raise these, other 401s a YTMusicServerError
+# "OAuth request error. status_code: 401", and 400 invalid_grant (revoked, or expired after
+# 7 days in Testing mode) a KeyError('access_token').
+_SIGN_IN_ERRORS = frozenset({"BadOAuthClient", "UnauthorizedOAuthClient"})
 
 
 def _rejected(exc: BaseException) -> bool:
-    """YouTube Music refused the signed-in request itself (not a network or server error)."""
-    return type(exc).__name__ == "YTMusicServerError" and bool(_REJECTED.search(str(exc)))
+    """The signed-in account was refused (by YouTube Music, or by Google when refreshing its
+    token): not a network or server error."""
+    name = type(exc).__name__
+    if name in _SIGN_IN_ERRORS or (isinstance(exc, KeyError) and exc.args == ("access_token",)):
+        return True
+    return name == "YTMusicServerError" and bool(_REJECTED.search(str(exc)))
+
+
+def _why(exc: BaseException) -> str:
+    """A short, token-free description of a rejection."""
+    if isinstance(exc, KeyError):
+        return "Google refused to renew the sign-in (revoked, or expired)"
+    text = " ".join(str(exc).split())
+    return text.split(", content:")[0][:160]  # never the response body of a token request
 
 
 class Catalog(Protocol):
@@ -393,7 +414,12 @@ class YTMusicCatalog:
             if item_id.startswith("RD"):  # mixes and radios
                 data = await self._call("get_watch_playlist", playlistId=item_id, limit=50)
                 return "Mix", _tracks((data or {}).get("tracks"))
-            data = await self._call("get_playlist", item_id, limit=LIBRARY_LIMIT)
+            try:
+                data = await self._call("get_playlist", item_id, limit=LIBRARY_LIMIT)
+            except Exception as exc:
+                if self._signed_in and self._rejecting():  # likely your own, private playlist
+                    raise SignInRejected(self.rejection) from exc
+                raise
             return str((data or {}).get("title") or "Playlist"), _tracks((data or {}).get("tracks"))
         if kind == "album":
             data = await self._call("get_album", item_id)
@@ -413,7 +439,10 @@ class YTMusicCatalog:
         cached = self._browsed.get(key)
         if cached is None:
             cached = shape(await fetch())
-            self._browsed.set(key, cached)
+            # Answers made without a rejected account aren't kept: the personal ones come back
+            # as soon as the account works again.
+            if not self._rejecting():
+                self._browsed.set(key, cached)
         return cast(T, cached)
 
     # --- helpers --------------------------------------------------------------------------------
@@ -428,23 +457,30 @@ class YTMusicCatalog:
             self._lists.set(key, cached)
         return cached
 
+    def _rejecting(self) -> bool:
+        return time.monotonic() < self._rejected_until
+
     async def _call(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """Search, radio, browsing: with the account, or without it while YouTube Music
         rejects the account (a bad sign-in must never stop "play ...")."""
-        if self._anon is not None and time.monotonic() < self._rejected_until:
-            return await self._run(self._anon, method, *args, **kwargs)
+        if self._anon is not None and self._rejecting():
+            return await self._run(self._anon, CALL_TIMEOUT, method, *args, **kwargs)
+        t0 = time.monotonic()
         try:
-            return await self._run(self._yt, method, *args, **kwargs)
+            return await self._run(self._yt, CALL_TIMEOUT, method, *args, **kwargs)
         except Exception as exc:
             if self._anon is None or not _rejected(exc):
                 raise
+            left = max(RETRY_MIN, CALL_TIMEOUT + RETRY_GRACE - (time.monotonic() - t0))
+            # If this fails too, it wasn't the sign-in: that error goes up, nothing is switched.
+            result = await self._run(self._anon, left, method, *args, **kwargs)
             self._reject(exc)
-            return await self._run(self._anon, method, *args, **kwargs)
+            return result
 
     async def _mine(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """Your library, likes, mixes and history: only with the account."""
         try:
-            return await self._run(self._yt, method, *args, **kwargs)
+            return await self._run(self._yt, CALL_TIMEOUT, method, *args, **kwargs)
         except Exception as exc:
             if not (self._signed_in and _rejected(exc)):
                 raise
@@ -452,8 +488,8 @@ class YTMusicCatalog:
             raise SignInRejected(self.rejection) from exc
 
     def _reject(self, exc: BaseException) -> None:
-        first = self.rejection is None or time.monotonic() >= self._rejected_until
-        self.rejection = " ".join(str(exc).split())[:160]
+        first = self.rejection is None or not self._rejecting()
+        self.rejection = _why(exc)
         self._rejected_until = time.monotonic() + REJECTED_FOR
         if first:
             log.warning(
@@ -462,10 +498,14 @@ class YTMusicCatalog:
                 self.rejection,
             )
 
-    async def _run(self, client: Any, method: str, *args: Any, **kwargs: Any) -> Any:
+    async def _run(
+        self, client: Any, seconds: float, method: str, /, *args: Any, **kwargs: Any
+    ) -> Any:
+        """``client.method(*args, **kwargs)`` in the pool, within ``seconds`` (positional-only:
+        ytmusicapi methods take keywords such as ``limit``)."""
         loop = asyncio.get_running_loop()
         fn = getattr(client, method)
-        async with asyncio.timeout(CALL_TIMEOUT):
+        async with asyncio.timeout(seconds):
             return await loop.run_in_executor(self._pool, lambda: fn(*args, **kwargs))
 
     def close(self) -> None:

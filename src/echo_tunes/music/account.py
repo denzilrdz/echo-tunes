@@ -155,6 +155,13 @@ async def diagnose(data_dir: Path, client: ClientSecrets | None, http: Any = Non
             },
         )
         if token.status_code != 200:
+            error = _error_code(token)
+            if error in ("invalid_client", "unauthorized_client"):
+                return (
+                    "The OAuth client doesn't match this sign-in (client ID or secret changed,"
+                    " or the client was deleted): check ECHO_TUNES_GOOGLE_CLIENT_ID/SECRET,"
+                    " then echo-tunes login"
+                )
             return (
                 "Google no longer accepts this sign-in (revoked, or older than 7 days while the"
                 " app is in Testing mode): publish the app, then echo-tunes login"
@@ -181,6 +188,14 @@ async def diagnose(data_dir: Path, client: ClientSecrets | None, http: Any = Non
         "Google accepts the sign-in but YouTube Music doesn't. Known for brand accounts and some"
         " family-plan members: sign in with your main account, or use echo-tunes login --browser"
     )
+
+
+def _error_code(resp: Any) -> str:
+    """Google's OAuth error code ("invalid_grant", ...), or "" if the body isn't JSON."""
+    try:
+        return str(resp.json().get("error") or "")
+    except ValueError:
+        return ""
 
 
 # --- login flows (used by the CLI) ---------------------------------------------------------------

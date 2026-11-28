@@ -112,6 +112,7 @@ asks Google's YouTube API with the same sign-in and says which of these it is:
 | Doctor says | Fix |
 | --- | --- |
 | *Enable the YouTube Data API v3 …* (with a link) | Open the link (or *APIs & Services → Library → YouTube Data API v3*) → **Enable**, wait a few minutes, restart echo-tunes. The most common cause. |
+| *The OAuth client doesn't match this sign-in …* | The client ID or secret changed, or the client was deleted: check `ECHO_TUNES_GOOGLE_CLIENT_ID`/`_SECRET` (or the saved client), then `echo-tunes login`. |
 | *Google no longer accepts this sign-in …* | Revoked, or older than 7 days while the consent screen is in *Testing*: publish the app (step 4 above), then `echo-tunes login`. |
 | *This Google account has no YouTube channel …* | At google.com/device you picked an account (often a brand account) that isn't the one with your library: `echo-tunes login` again and pick the right one. |
 | *Google accepts the sign-in but YouTube Music doesn't …* | Known for brand accounts and some family-plan members: sign in with your main account, or use [browser headers](#browser-headers-quicker-less-durable). |
@@ -120,7 +121,9 @@ asks Google's YouTube API with the same sign-in and says which of these it is:
 has Google's Advanced Protection, or a Workspace admin blocks the app: use another account or
 [browser headers](#browser-headers-quicker-less-durable).
 
-After a fix, echo-tunes tries the account again within 10 minutes (or restart it).
+The same happens when Google refuses to renew the sign-in (revoked, expired, or a changed
+client): search and playback carry on, and doctor says which. After a fix, echo-tunes tries the
+account again within 10 minutes (or restart it).
 
 ## Signing out
 

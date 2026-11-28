@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 import pytest
+import requests
+import requests.adapters
 from ytmusicapi.exceptions import YTMusicServerError
 
 from echo_tunes.alexa.skill import SIGN_IN_REJECTED, Skill
@@ -208,3 +210,150 @@ async def test_diagnose_without_a_usable_sign_in(tmp_path: Path) -> None:
     assert "browser headers" in await account.diagnose(tmp_path, CLIENT)
     (tmp_path / account.BROWSER_FILE).unlink()
     assert "OAuth client is missing" in await account.diagnose(signed_in(tmp_path), None)
+
+
+# --- second review of #32: refusals that happen while renewing the token -------------------------
+class TokenEndpoint(requests.adapters.BaseAdapter):
+    """Google's token endpoint, answering every refresh with one fixed reply."""
+
+    def __init__(self, status: int, body: dict[str, Any]) -> None:
+        super().__init__()
+        self.status, self.body = status, body
+        self.urls: list[str] = []
+
+    def send(self, request: Any, *args: Any, **kwargs: Any) -> requests.Response:
+        self.urls.append(str(request.url))
+        resp = requests.Response()
+        resp.status_code = self.status
+        resp._content = json.dumps(self.body).encode()
+        resp.headers["Content-Type"] = "application/json"
+        resp.url, resp.request = str(request.url), request
+        return resp
+
+    def close(self) -> None:
+        pass
+
+
+def real_signed_in_client(tmp_path: Path, endpoint: TokenEndpoint) -> Any:
+    """A real ytmusicapi YTMusic whose saved token has expired, so its next call renews it."""
+    from ytmusicapi import OAuthCredentials, YTMusic
+
+    token = {
+        "access_token": "old-acc3ss",
+        "refresh_token": "r3fresh",
+        "scope": "https://www.googleapis.com/auth/youtube",
+        "token_type": "Bearer",
+        "expires_at": 1,  # long expired
+        "expires_in": 3599,
+    }
+    path = tmp_path / "oauth.json"
+    path.write_text(json.dumps(token))
+    session = requests.Session()
+    session.mount("https://", endpoint)
+    creds = OAuthCredentials("id.apps.googleusercontent.com", "secret", session=session)
+    return YTMusic(str(path), oauth_credentials=creds, requests_session=session)
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (
+            400,
+            {"error": "invalid_grant", "error_description": "Token has been expired or revoked."},
+        ),
+        (401, {"error": "invalid_client"}),
+        (401, {"error": "unauthorized_client"}),
+        (401, {"error": "something_else"}),
+    ],
+)
+async def test_a_refused_token_renewal_falls_back_too(
+    tmp_path: Path, status: int, body: dict[str, Any]
+) -> None:
+    """Review of #32: ytmusicapi renews the token before each call, so a revoked or expired
+    sign-in (or a wrong client) failed there, with errors that never say "HTTP 400"; search
+    still broke and doctor never ran its diagnosis."""
+    endpoint = TokenEndpoint(status, body)
+    anon = FakeYT()
+    cat = YTMusicCatalog(real_signed_in_client(tmp_path, endpoint), True, anonymous=anon)
+    try:
+        track = await cat.search_song("kesariya")
+        assert track is not None and track.title == "Kesariya"
+        assert "https://oauth2.googleapis.com/token" in endpoint.urls  # the renewal was refused
+        assert cat.rejection and "r3fresh" not in cat.rejection and "acc3ss" not in cat.rejection
+        with pytest.raises(SignInRejected):
+            await cat.liked_songs()
+    finally:
+        cat.close()
+
+
+async def test_both_failing_is_not_a_sign_in_problem() -> None:
+    cat, _, anon = make(YTMusicServerError(REJECTED))
+    anon.error = YTMusicServerError("Server returned HTTP 400: Bad Request.\nBad query.")
+    try:
+        with pytest.raises(YTMusicServerError, match="Bad query"):
+            await cat.search_song("kesariya")
+        assert cat.rejection is None  # nothing switched, no "rejected the account" warning
+    finally:
+        cat.close()
+
+
+async def test_the_retry_shares_one_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The first rejected "play ..." must still answer within Alexa's ~8 s."""
+    import time
+
+    monkeypatch.setattr(catalog, "CALL_TIMEOUT", 0.3)
+    monkeypatch.setattr(catalog, "RETRY_GRACE", 0.0)
+    monkeypatch.setattr(catalog, "RETRY_MIN", 0.05)
+
+    class Slow(FakeYT):
+        def search(self, *a: Any, **k: Any) -> list[dict[str, Any]]:
+            time.sleep(0.2)
+            return super().search(*a, **k)
+
+    mine, anon = Slow(YTMusicServerError(REJECTED)), Slow()
+    cat = YTMusicCatalog(mine, True, anonymous=anon)
+    try:
+        t0 = time.monotonic()
+        with pytest.raises(TimeoutError):  # 0.2 s used, 0.1 s left: the 0.2 s retry is cut off
+            await cat.search_song("kesariya")
+        assert time.monotonic() - t0 < 0.45
+    finally:
+        cat.close()
+
+
+async def test_your_own_playlist_says_the_sign_in_is_rejected() -> None:
+    class Private(FakeYT):
+        def get_playlist(self, *a: Any, **k: Any) -> Any:
+            return self._answer("get_playlist", None) or {}["contents"]  # as YTM: KeyError
+
+    cat = YTMusicCatalog(FakeYT(YTMusicServerError(REJECTED)), True, anonymous=Private())
+    try:
+        await cat.search_song("x")  # the account is now known to be rejected
+        with pytest.raises(SignInRejected):
+            await cat.items_of("playlist", "PLmyownprivate")
+    finally:
+        cat.close()
+
+
+async def test_answers_without_the_account_are_not_cached() -> None:
+    class Home(FakeYT):
+        def get_home(self, *a: Any, **k: Any) -> list[dict[str, Any]]:
+            return self._answer("get_home", [{"title": "Quick picks", "contents": [SONG]}])  # type: ignore[no-any-return]
+
+    mine, anon = Home(YTMusicServerError(REJECTED)), Home()
+    cat = YTMusicCatalog(mine, True, anonymous=anon)
+    try:
+        assert await cat.home()
+        assert await cat.home()
+        assert anon.calls == ["get_home", "get_home"]  # asked again, not served from the cache
+    finally:
+        cat.close()
+
+
+async def test_diagnose_a_client_mismatch(tmp_path: Path) -> None:
+    http = google(httpx.Response(401, json={"error": "invalid_client"}), httpx.Response(500))
+    try:
+        why = await account.diagnose(signed_in(tmp_path), CLIENT, http)
+    finally:
+        await http.aclose()
+    assert "OAuth client doesn't match" in why
