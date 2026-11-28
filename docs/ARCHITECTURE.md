@@ -16,7 +16,7 @@ flowchart LR
     end
 
     App -- "search, radio<br/>(ytmusicapi)" --> YTM[YouTube Music]
-    Workers -- "search on YouTube" --> YTM
+    Workers -- "search on YouTube<br/>(one at a time)" --> YT[YouTube]
     Workers -- "audio link" --> YTM
     App -- "audio bytes (Range)" --> CDN[YouTube CDN]
 ```

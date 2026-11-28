@@ -196,7 +196,10 @@ function Single({ q, kind }: { q: string; kind: Kind }) {
 }
 
 function Videos({ q }: { q: string }) {
-  const r = useSearch(q, "video");
+  // Each YouTube search takes a server worker for about a second: wait for a real pause in
+  // typing rather than searching every prefix.
+  const settled = useDebounced(q, 700);
+  const r = useSearch(settled, "video");
   if (r.isLoading) return <TrackListSkeleton />;
   if (r.error) return <ErrorNote error={r.error} retry={() => r.refetch()} />;
   const items = r.data?.items ?? [];

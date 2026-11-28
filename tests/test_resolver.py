@@ -136,3 +136,61 @@ async def test_a_stuck_search_times_out_and_frees_the_workers(
         await res.search("anything", 5)
     assert res._pool is not old_pool  # the stuck worker's pool was replaced
     assert (await res.get("fine0000003")).url.endswith("fine0000003")
+
+
+async def test_a_search_given_up_on_keeps_its_worker_until_it_really_ends(
+    res: Resolver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of #28: a cancelled search freed its slot while its worker was still busy, so
+    the next lookup queued behind it with its timer running, timed out, and restarted the
+    pool (killing the lookups for the songs about to play)."""
+
+    def slow_search(query: str, limit: int) -> list[dict[str, Any]]:
+        time.sleep(0.6)
+        return []
+
+    monkeypatch.setattr(extract, "search", slow_search)
+    monkeypatch.setattr(resolver, "RESOLVE_TIMEOUT", 0.3)  # less than the abandoned search
+    search = asyncio.create_task(res.search("anything", 5))
+    await asyncio.sleep(0.1)
+    search.cancel()  # e.g. past youtube.BUDGET
+    with pytest.raises(asyncio.CancelledError):
+        await search
+    old_pool = res._pool
+    src = await res.get("fine0000004")  # waits for the worker, then gets its full 0.3 s
+    assert src.url.endswith("fine0000004")
+    assert res._pool is old_pool  # nothing was restarted
+
+
+async def test_searches_run_one_at_a_time_and_a_crowd_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        Resolver, "_new_pool", lambda self: ThreadPoolExecutor(max_workers=self._workers)
+    )
+    running, most = [0], [0]
+    lock = threading.Lock()
+
+    def counted_search(query: str, limit: int) -> list[dict[str, Any]]:
+        with lock:
+            running[0] += 1
+            most[0] = max(most[0], running[0])
+        time.sleep(0.05)
+        with lock:
+            running[0] -= 1
+        return []
+
+    monkeypatch.setattr(extract, "search", counted_search)
+    monkeypatch.setattr(extract, "resolve", _fake_resolve)
+    r = Resolver(workers=2, tasks_per_worker=10, cookies=None, cache_dir=None)
+    try:
+        searches = [asyncio.create_task(r.search(f"q{i}", 5)) for i in range(8)]
+        await asyncio.sleep(0.01)
+        src = await r.get("fine0000005")  # a song's link isn't stuck behind the searches
+        assert src.url.endswith("fine0000005")
+        results = await asyncio.gather(*searches, return_exceptions=True)
+        refused = [x for x in results if isinstance(x, resolver.Busy)]
+        assert len(refused) == 8 - resolver.MAX_SEARCHES_WAITING
+        assert most[0] == 1
+    finally:
+        r.close()

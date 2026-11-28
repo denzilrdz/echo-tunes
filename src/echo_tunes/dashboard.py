@@ -45,6 +45,7 @@ from echo_tunes.history import History
 from echo_tunes.metrics import CONTENT_TYPE, METRICS
 from echo_tunes.music import browse
 from echo_tunes.music.catalog import NotSignedIn, Track
+from echo_tunes.music.resolver import Busy
 from echo_tunes.player.state import PlayerState
 from echo_tunes.player.store import StateStore
 from echo_tunes.sessions import Sessions, session_key
@@ -585,6 +586,8 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
             return await call
         except NotSignedIn as exc:
             raise HTTPException(409, "Sign in to YouTube Music first: echo-tunes login") from exc
+        except Busy as exc:
+            raise HTTPException(503, "Too many YouTube searches at once; try again.") from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except Exception as exc:
