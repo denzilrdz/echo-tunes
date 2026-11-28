@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-28
+
 ### Added
 
 - **Play anything on YouTube, not just YouTube Music.** Say *"Alexa, ask my tunes to play
@@ -328,7 +330,8 @@ First release.
   `Content-Length` can't be read without limit.
 - CI's secret scan works on pull requests from Dependabot.
 
-[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/denzilrdz/echo-tunes/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/denzilrdz/echo-tunes/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/denzilrdz/echo-tunes/compare/v0.2.2...v0.3.0
