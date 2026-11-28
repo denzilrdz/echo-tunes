@@ -25,6 +25,7 @@ const PAGES = [
   "#/",
   "#/search?q=neon",
   "#/search?q=neon&type=album",
+  "#/search?q=neon&type=video",
   "#/library",
   "#/devices",
   "#/collection/playlist/playlist-Focus-Flow",

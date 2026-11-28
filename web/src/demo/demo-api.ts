@@ -369,6 +369,14 @@ async function answer(method: "GET" | "POST", path: string, body?: unknown): Pro
     case "GET /api/search": {
       const term = (q.get("q") ?? "").toLowerCase();
       const kind = q.get("kind") ?? "song";
+      if (kind === "video") {
+        const hits = SONGS.filter((s) => `${s.title} ${s.artist}`.toLowerCase().includes(term));
+        const videos = [...hits, ...SONGS.filter((s) => !hits.includes(s))].slice(0, 8);
+        return {
+          kind,
+          items: videos.map((s) => ({ ...songItem(s), title: `${s.title} (live)` })),
+        };
+      }
       if (kind === "song") {
         const hits = SONGS.filter((s) => `${s.title} ${s.artist}`.toLowerCase().includes(term));
         return {

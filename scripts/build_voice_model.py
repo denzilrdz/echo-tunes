@@ -49,6 +49,24 @@ INTENTS = [
         ],
     },
     {
+        # All of YouTube, not just YouTube Music: videos, covers, live sets, podcasts...
+        "name": "PlayYouTubeIntent",
+        "slots": QUERY,
+        "samples": [
+            "play {query} on youtube",
+            "play {query} from youtube",
+            "play {query} off youtube",
+            "put on {query} from youtube",
+            "play the youtube video {query}",
+            "play the video {query}",
+            "search youtube for {query}",
+            "find {query} on youtube",
+            "youtube {query}",
+            "i want to hear {query} on youtube",
+            "listen to {query} on youtube",
+        ],
+    },
+    {
         "name": "PlayLikedIntent",
         "slots": [],
         "samples": [

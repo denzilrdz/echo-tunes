@@ -40,6 +40,7 @@ def one_round(c: TestClient, amazon: FakeAmazon, n: int) -> None:
     post(intent("AMAZON.NextIntent"))
     post(envelope({"type": "PlaybackController.NextCommandIssued"}))
     post(intent("WhatsPlayingIntent"))
+    post(intent("PlayYouTubeIntent", f"video number {n} on youtube"))
 
 
 def test_memory_stays_flat(skill: Skill) -> None:

@@ -13,6 +13,7 @@ from echo_tunes.dashboard import DashboardDeps, create_dashboard
 from echo_tunes.history import History
 from echo_tunes.music import browse
 from echo_tunes.music.catalog import YTMusicCatalog
+from echo_tunes.music.youtube import YouTubeSearch
 
 from .conftest import DEVICE, directives, event, intent, song
 
@@ -136,12 +137,17 @@ async def test_catalog_browsing_is_parsed_and_cached() -> None:
 
 
 # --- the dashboard API -------------------------------------------------------------------------
+async def fake_youtube(query: str, limit: int) -> list[dict[str, Any]]:
+    return [{"id": "ytvid000001", "title": f"{query} video", "channel": "Ch", "duration": 61}]
+
+
 def client(skill: Skill, password: str | None = "pw", **kw: Any) -> TestClient:  # noqa: S107
     if skill.history is None:
         skill.history = History(":memory:", 15)
     deps = DashboardDeps(
         store=skill.store, history=skill.history, signed_in=lambda: False, password=password,
-        catalog=YTMusicCatalog(FakeYT(), signed_in=False), skill=skill, **kw,
+        catalog=YTMusicCatalog(FakeYT(), signed_in=False, youtube=YouTubeSearch(fake_youtube)),
+        skill=skill, **kw,
     )  # fmt: skip
     headers = {"Sec-Fetch-Site": "same-origin"}
     if password:
@@ -165,7 +171,13 @@ async def start(skill: Skill) -> str:
 def test_browsing_endpoints(skill: Skill) -> None:
     c = client(skill, password=None)
     assert c.get("/api/search", params={"q": "x", "kind": "album"}).status_code == 200
-    assert c.get("/api/search", params={"q": "x", "kind": "video"}).status_code == 422
+    videos = c.get("/api/search", params={"q": "x", "kind": "video"}).json()
+    assert videos["kind"] == "video"
+    assert videos["items"] == [
+        {"kind": "song", "id": "ytvid000001", "title": "x video", "subtitle": "Ch",
+         "image": None, "duration": 61}
+    ]  # fmt: skip
+    assert c.get("/api/search", params={"q": "x", "kind": "podcast"}).status_code == 422
     assert c.get("/api/browse/home").json()["sections"][0]["title"] == "Quick picks"
     ex = c.get("/api/browse/explore").json()
     assert ex["charts"][0]["title"] == "Top songs" and ex["moods"]

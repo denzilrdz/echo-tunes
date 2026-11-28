@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import weakref
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ COLLECTION_BUDGET = 7.0
 
 HELP = (
     "You can say: play, followed by a song or artist. Or: play radio for, followed by a song. "
+    "To search all of YouTube, add: on YouTube. "
     "If you've signed in, say: play my liked songs, play my supermix, "
     "or play my playlist, followed by its name. "
     "While music plays, say next, previous, pause, shuffle, or ask what's playing."
@@ -116,14 +118,18 @@ class Skill:
         METRICS.intent(name)
 
         match name:
-            case "PlayIntent" | "PlayRadioIntent" | "SongNameIntent":
-                query = query or _slot(intent, "song")
+            case "PlayIntent" | "PlayRadioIntent" | "SongNameIntent" | "PlayYouTubeIntent":
+                query, on_youtube = _youtube_query(query or _slot(intent, "song"))
                 if not query:
                     return r.build(
                         "What should I play?", reprompt="Say a song or artist.", end_session=False
                     )
                 return await self._start(
-                    query, state, device, radio_intro=name == "PlayRadioIntent"
+                    query,
+                    state,
+                    device,
+                    radio_intro=name == "PlayRadioIntent",
+                    youtube=on_youtube or name == "PlayYouTubeIntent",
                 )
             case "PlayLikedIntent" | "PlayPlaylistIntent" | "PlayMixIntent":
                 return await self._start_collection(name, intent, state)
@@ -168,25 +174,33 @@ class Skill:
                 return r.build()
 
     async def _start(
-        self, query: str, state: PlayerState, device: str, *, radio_intro: bool
+        self, query: str, state: PlayerState, device: str, *, radio_intro: bool, youtube: bool
     ) -> r.Response:
+        service = "YouTube" if youtube else "YouTube Music"
         try:
-            track = await self.catalog.search_song(query)
-        except Exception:
-            log.exception("search failed")
+            if youtube:
+                track = await self.catalog.search_video(query)
+            else:
+                track = await self.catalog.search_song(query)
+        except Exception as exc:
+            # Only the error's type: yt-dlp's messages can carry YouTube URLs.
+            log.warning("%s search failed: %s", service, type(exc).__name__)
             METRICS.youtube_errors.inc()
-            return r.build("Sorry, I couldn't reach YouTube Music. Please try again.")
+            return r.build(f"Sorry, I couldn't reach {service}. Please try again.")
         if track is None:
-            return r.build(f"Sorry, I couldn't find {query}.")
+            where = " on YouTube" if youtube else ""
+            return r.build(f"Sorry, I couldn't find {query}{where}.")
         self.resolver.warm(track.video_id)  # start fetching the audio link right away
         state.replace([track], self.cfg.max_queue)
         state.failures = 0
-        state.source = f'{"Radio for" if radio_intro else "Asked for"} "{query}"'
+        label = "Radio for" if radio_intro else "On YouTube:" if youtube else "Asked for"
+        state.source = f'{label} "{query}"'
         state.source_kind = "radio" if radio_intro else "ask"
         # Answer Alexa now (it allows ~8 s); the radio that follows is fetched afterwards.
         self._in_background(self._fill_radio(device, state.rev, track))
         intro = "Starting radio based on" if radio_intro else "Playing"
-        return r.build(f"{intro} {track.spoken}.", directives=[self._play(state, 0)])
+        where = " from YouTube" if youtube and not radio_intro else ""
+        return r.build(f"{intro} {track.spoken}{where}.", directives=[self._play(state, 0)])
 
     async def _fill_radio(self, device: str, rev: int, seed: Track) -> None:
         try:
@@ -576,6 +590,16 @@ class Skill:
             log.warning("could not extend the queue: %s", exc)
             return
         state.extend(more, self.cfg.max_queue)
+
+
+# "... on YouTube": Alexa often hands the whole phrase to the plain play intent's catch-all slot.
+_ON_YOUTUBE = re.compile(r"\s*\b(?:on|from|in|using|via|off)\s+(?:the\s+)?you\s?tube\.?$", re.I)
+
+
+def _youtube_query(query: str) -> tuple[str, bool]:
+    """``(query without a trailing "on YouTube", whether it had one)``."""
+    stripped = _ON_YOUTUBE.sub("", query).strip()
+    return stripped, stripped != query.strip()
 
 
 def _device_id(envelope: dict[str, Any]) -> str:

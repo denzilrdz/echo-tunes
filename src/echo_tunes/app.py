@@ -26,6 +26,7 @@ from echo_tunes.metrics import METRICS
 from echo_tunes.music import account
 from echo_tunes.music.catalog import YTMusicCatalog
 from echo_tunes.music.resolver import Resolver
+from echo_tunes.music.youtube import YouTubeSearch
 from echo_tunes.player.store import StateStore
 from echo_tunes.stream import MAX_STREAMS, AudioResponse, StreamError, StreamRelay
 
@@ -98,6 +99,7 @@ def build_services(settings: Settings) -> tuple[Services, list[object]]:
             ),
         ),
         send_history=settings.send_history,
+        youtube=YouTubeSearch(resolver.search),
     )
     skill = Skill(
         SkillConfig(

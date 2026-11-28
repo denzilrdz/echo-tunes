@@ -57,12 +57,13 @@ no Amazon password.
 | **One container**      | A single Docker image (amd64 and arm64: PCs, cloud servers, Raspberry Pi). No AWS Lambda, no database server.     |
 | **No Amazon password** | You create a private skill in the free Alexa developer console. echo-tunes never sees your Amazon login.          |
 | **Your own music**     | Optional Google sign-in: "play my liked songs", your playlists, your mixes, "like this song".         |
+| **All of YouTube too** | "Play … on YouTube" searches all of YouTube (covers, live sets, talks) instead of just YouTube Music. No API key. |
 | **Endless radio**      | Every song starts a YouTube Music radio, and the queue tops itself up so the music doesn't stop.                  |
 | **Fast song changes**  | The next song's audio is prepared while the current one plays.                                                   |
 | **Runs anywhere**      | Any Docker host: a cloud server with a public IP, or a home server behind a tunnel. No vendor lock-in; ready examples for Caddy, Cloudflare Tunnel and Tailscale Funnel. |
 | **Secure by default**  | Every request's Amazon signature and your skill ID are checked; audio links are signed and expire.                |
 | **Flat memory**        | Bounded caches, streamed audio and recycled worker processes: memory doesn't creep up over weeks of uptime.       |
-| **Web player**         | Search songs, albums, artists and playlists; browse charts, moods and your library. Play in the browser or queue on an Echo. [Demo](https://denzilrdz.github.io/echo-tunes/demo/) |
+| **Web player**         | Search songs, albums, artists, playlists and all of YouTube; browse charts, moods and your library. Play in the browser or queue on an Echo. [Demo](https://denzilrdz.github.io/echo-tunes/demo/) |
 | **Your favourite speaker** | Pick where music plays (an Echo or this phone) once; it's selected every time you open the app, and one tap switches it. |
 | **Phone app**          | Install the dashboard from your browser (it's a PWA): own icon, full screen, lock-screen controls, sign in once per device. Name, colour and icon are settings. |
 | **Private dashboard**  | Now playing and up next per Echo, 15-day play history (clear it any time), stats, a setup checklist and a "test play" button. |

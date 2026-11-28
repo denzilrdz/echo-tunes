@@ -17,6 +17,11 @@ description: The audio relay and the yt-dlp resolver. Use when changing src/echo
   that were sharing the old pool see `BrokenProcessPool`/a cancelled future and **retry once**
   on the new pool.
 - Results are cached until shortly before YouTube's expiry (`EXPIRY_MARGIN`).
+- The same workers run YouTube searches (`Resolver.search` → `extract.search`, flat
+  `ytsearchN:`), through the same `_run` (slots, timeout restarts the pool, one retry).
+  `SEARCH_TIMEOUT` is short (Alexa waits); `youtube.BUDGET` bounds the whole search, waiting
+  for a free worker included. Live streams have no format 140 (HLS only): `youtube.parse`
+  drops them.
 - Tests: `tests/test_resolver.py` swaps the pool for threads and `extract.resolve` for a fake.
 
 ## Relay (`stream.py`)

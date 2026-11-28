@@ -112,3 +112,27 @@ async def test_warm_then_invalidate(res: Resolver) -> None:
     res.invalidate("slow0000003")
     await res.get("slow0000003")
     assert res.calls == ["slow0000003", "slow0000003"]  # type: ignore[attr-defined]
+
+
+async def test_search_runs_in_a_worker(res: Resolver, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_search(query: str, limit: int) -> list[dict[str, Any]]:
+        return [{"id": "abcdefghijk", "title": query, "limit": limit}]
+
+    monkeypatch.setattr(extract, "search", fake_search)
+    assert await res.search("lofi", 3) == [{"id": "abcdefghijk", "title": "lofi", "limit": 3}]
+
+
+async def test_a_stuck_search_times_out_and_frees_the_workers(
+    res: Resolver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def stuck_search(query: str, limit: int) -> list[dict[str, Any]]:
+        time.sleep(1.0)
+        return []
+
+    monkeypatch.setattr(extract, "search", stuck_search)
+    monkeypatch.setattr(resolver, "SEARCH_TIMEOUT", 0.2)
+    old_pool = res._pool
+    with pytest.raises(TimeoutError):
+        await res.search("anything", 5)
+    assert res._pool is not old_pool  # the stuck worker's pool was replaced
+    assert (await res.get("fine0000003")).url.endswith("fine0000003")

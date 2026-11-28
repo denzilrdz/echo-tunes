@@ -586,7 +586,7 @@ def _player_routes(app: FastAPI, deps: DashboardDeps) -> None:
     @app.get("/api/search")
     async def search(
         q: str = Query(min_length=1, max_length=100),
-        kind: browse.Kind = "song",
+        kind: browse.SearchKind = "song",
     ) -> dict[str, Any]:
         found = await youtube(need(deps.catalog).search_items(q.strip(), kind))
         return {"kind": kind, "items": items(found)}
