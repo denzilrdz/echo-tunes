@@ -7,6 +7,7 @@ import asyncio
 import difflib
 import logging
 import re
+import time
 import unicodedata
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -58,6 +59,23 @@ class Collection:
 
 class NotSignedIn(Exception):
     """The request needs a YouTube Music account; see ``echo-tunes login``."""
+
+
+class SignInRejected(NotSignedIn):
+    """Signed in, but YouTube Music rejects the account (HTTP 400/401/403): personal features
+    fail, while search, radio and browsing carry on without the account (``echo-tunes doctor``
+    says why)."""
+
+
+# How long to keep searching without the account after YouTube Music rejected it, before
+# trying the account again (a fixed sign-in, e.g. after enabling an API, is picked up then).
+REJECTED_FOR = 600.0
+_REJECTED = re.compile(r"HTTP (400|401|403)\b")
+
+
+def _rejected(exc: BaseException) -> bool:
+    """YouTube Music refused the signed-in request itself (not a network or server error)."""
+    return type(exc).__name__ == "YTMusicServerError" and bool(_REJECTED.search(str(exc)))
 
 
 class Catalog(Protocol):
@@ -200,8 +218,13 @@ class YTMusicCatalog:
         *,
         send_history: bool = False,
         youtube: youtube.YouTubeSearch | None = None,
+        anonymous: Any = None,
     ) -> None:
         self._yt = client
+        # Without the account, for when YouTube Music rejects it (signed in only).
+        self._anon = anonymous if signed_in else None
+        self._rejected_until = 0.0
+        self.rejection: str | None = None  # the last rejection, short (for doctor)
         self._youtube = youtube
         self._signed_in = signed_in
         self._send_history = send_history and signed_in
@@ -242,7 +265,7 @@ class YTMusicCatalog:
     # --- your library (signed in) -----------------------------------------------------------
     async def liked_songs(self) -> Collection:
         self._need_account()
-        data = await self._call("get_liked_songs", limit=LIBRARY_LIMIT)
+        data = await self._mine("get_liked_songs", limit=LIBRARY_LIMIT)
         return Collection("your liked songs", _tracks((data or {}).get("tracks")))
 
     async def playlist(self, name: str) -> Collection | None:
@@ -252,7 +275,7 @@ class YTMusicCatalog:
         i = best_match(name, titles)
         if i is None:
             return None
-        data = await self._call("get_playlist", playlists[i]["playlistId"], limit=LIBRARY_LIMIT)
+        data = await self._mine("get_playlist", playlists[i]["playlistId"], limit=LIBRARY_LIMIT)
         return Collection(titles[i], _tracks((data or {}).get("tracks")))
 
     async def mix(self, name: str) -> Collection | None:
@@ -275,22 +298,22 @@ class YTMusicCatalog:
                 return None  # asked for a specific mix that isn't there: say so
             i = next((k for k, t in enumerate(titles) if "supermix" in t.lower()), 0)
         chosen = mixes[i]
-        data = await self._call("get_watch_playlist", playlistId=chosen["playlistId"], limit=50)
+        data = await self._mine("get_watch_playlist", playlistId=chosen["playlistId"], limit=50)
         return Collection(chosen["title"], _tracks((data or {}).get("tracks")))
 
     async def like(self, video_id: str) -> None:
         self._need_account()
         from ytmusicapi import LikeStatus
 
-        await self._call("rate_song", video_id, LikeStatus.LIKE)
+        await self._mine("rate_song", video_id, LikeStatus.LIKE)
 
     async def played(self, video_id: str) -> None:
         """Add a song to your YouTube history, so recommendations learn (opt-in)."""
         if not self._send_history:
             return
         try:
-            song = await self._call("get_song", video_id)
-            await self._call("add_history_item", song)
+            song = await self._mine("get_song", video_id)
+            await self._mine("add_history_item", song)
         except Exception as exc:
             log.info("couldn't add %s to history: %s", video_id, exc)
 
@@ -401,13 +424,47 @@ class YTMusicCatalog:
     async def _cached_list(self, key: str, method: str, **kwargs: Any) -> list[dict[str, Any]]:
         cached = self._lists.get(key)
         if cached is None:
-            cached = list(await self._call(method, **kwargs) or [])
+            cached = list(await self._mine(method, **kwargs) or [])
             self._lists.set(key, cached)
         return cached
 
     async def _call(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        """Search, radio, browsing: with the account, or without it while YouTube Music
+        rejects the account (a bad sign-in must never stop "play ...")."""
+        if self._anon is not None and time.monotonic() < self._rejected_until:
+            return await self._run(self._anon, method, *args, **kwargs)
+        try:
+            return await self._run(self._yt, method, *args, **kwargs)
+        except Exception as exc:
+            if self._anon is None or not _rejected(exc):
+                raise
+            self._reject(exc)
+            return await self._run(self._anon, method, *args, **kwargs)
+
+    async def _mine(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        """Your library, likes, mixes and history: only with the account."""
+        try:
+            return await self._run(self._yt, method, *args, **kwargs)
+        except Exception as exc:
+            if not (self._signed_in and _rejected(exc)):
+                raise
+            self._reject(exc)
+            raise SignInRejected(self.rejection) from exc
+
+    def _reject(self, exc: BaseException) -> None:
+        first = self.rejection is None or time.monotonic() >= self._rejected_until
+        self.rejection = " ".join(str(exc).split())[:160]
+        self._rejected_until = time.monotonic() + REJECTED_FOR
+        if first:
+            log.warning(
+                "YouTube Music rejected the signed-in account (%s); search and radio carry on "
+                "without it. Run `echo-tunes doctor` to see why.",
+                self.rejection,
+            )
+
+    async def _run(self, client: Any, method: str, *args: Any, **kwargs: Any) -> Any:
         loop = asyncio.get_running_loop()
-        fn = getattr(self._yt, method)
+        fn = getattr(client, method)
         async with asyncio.timeout(CALL_TIMEOUT):
             return await loop.run_in_executor(self._pool, lambda: fn(*args, **kwargs))
 

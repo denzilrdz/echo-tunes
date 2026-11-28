@@ -38,7 +38,8 @@ Google requires each app that signs in to YouTube to have its own client. It's f
 1. Open the [Google Cloud console](https://console.cloud.google.com) and **create a project**
    (top bar → project picker → *New project*), e.g. `echo-tunes`.
 2. **Enable the YouTube Data API:** *APIs & Services → Library* → search
-   **YouTube Data API v3** → **Enable**.
+   **YouTube Data API v3** → **Enable**. Don't skip this: without it YouTube Music rejects the
+   sign-in ("HTTP 400: Request contains an invalid argument"), although Google signs you in fine.
 3. **Set up the consent screen:** *Google Auth Platform* (called *OAuth consent screen* in
    older consoles) → **Get started**.
    - *App name*: `echo-tunes`; *User support email*: yours.
@@ -100,6 +101,26 @@ docker compose exec echo-tunes echo-tunes doctor
 
 These headers contain your session cookie: treat them like a password. They stop working if
 you sign out of YouTube in that browser, so a private window you then just close works well.
+
+## YouTube Music rejects the sign-in
+
+`echo-tunes doctor` (or the dashboard's Setup page) shows **"Signed in, but YouTube Music rejects
+the account (… HTTP 400 …)"**. Nothing stops: search, radio and playback carry on without the
+account; only your liked songs, playlists, mixes and "like this song" are unavailable. The check
+asks Google's YouTube API with the same sign-in and says which of these it is:
+
+| Doctor says | Fix |
+| --- | --- |
+| *Enable the YouTube Data API v3 …* (with a link) | Open the link (or *APIs & Services → Library → YouTube Data API v3*) → **Enable**, wait a few minutes, restart echo-tunes. The most common cause. |
+| *Google no longer accepts this sign-in …* | Revoked, or older than 7 days while the consent screen is in *Testing*: publish the app (step 4 above), then `echo-tunes login`. |
+| *This Google account has no YouTube channel …* | At google.com/device you picked an account (often a brand account) that isn't the one with your library: `echo-tunes login` again and pick the right one. |
+| *Google accepts the sign-in but YouTube Music doesn't …* | Known for brand accounts and some family-plan members: sign in with your main account, or use [browser headers](#browser-headers-quicker-less-durable). |
+
+**"Error 400: policy_enforced"** at google.com/device (before any of this) means the account
+has Google's Advanced Protection, or a Workspace admin blocks the app: use another account or
+[browser headers](#browser-headers-quicker-less-durable).
+
+After a fix, echo-tunes tries the account again within 10 minutes (or restart it).
 
 ## Signing out
 

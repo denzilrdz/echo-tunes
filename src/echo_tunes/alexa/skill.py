@@ -14,7 +14,7 @@ from echo_tunes import tokens
 from echo_tunes.alexa import responses as r
 from echo_tunes.history import History
 from echo_tunes.metrics import METRICS
-from echo_tunes.music.catalog import Catalog, Collection, NotSignedIn, Track
+from echo_tunes.music.catalog import Catalog, Collection, NotSignedIn, SignInRejected, Track
 from echo_tunes.music.resolver import AudioResolver
 from echo_tunes.player.state import PlayerState
 from echo_tunes.player.store import StateStore
@@ -31,6 +31,10 @@ HELP = (
     "If you've signed in, say: play my liked songs, play my supermix, "
     "or play my playlist, followed by its name. "
     "While music plays, say next, previous, pause, shuffle, or ask what's playing."
+)
+SIGN_IN_REJECTED = (
+    "YouTube Music isn't accepting your sign-in right now, so your own music isn't available. "
+    "Other songs still play. Run echo tunes doctor on your server to see why."
 )
 SIGN_IN_FIRST = (
     "To play your own music, sign in to YouTube Music first. Run echo tunes login on your server."
@@ -248,6 +252,8 @@ class Skill:
                     coll = await self.catalog.playlist(wanted)
                 else:
                     coll = await self.catalog.mix(wanted or "supermix")
+        except SignInRejected:
+            return r.build(SIGN_IN_REJECTED)
         except NotSignedIn:
             return r.build(SIGN_IN_FIRST)
         except TimeoutError:
@@ -279,6 +285,8 @@ class Skill:
             return r.build("Nothing is playing.")
         try:
             await self.catalog.like(cur.video_id)
+        except SignInRejected:
+            return r.build(SIGN_IN_REJECTED)
         except NotSignedIn:
             return r.build(SIGN_IN_FIRST)
         except Exception:

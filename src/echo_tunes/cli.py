@@ -169,9 +169,11 @@ def doctor() -> None:
     client = account.load_client(
         settings.data_dir, settings.google_client_id, settings.google_client_secret
     )
-    catalog = YTMusicCatalog(
-        *account.make_client(settings.data_dir, settings.language, settings.location, client)
+    yt, signed_in = account.make_client(
+        settings.data_dir, settings.language, settings.location, client
     )
+    anonymous = account.anonymous_client(settings.language, settings.location)
+    catalog = YTMusicCatalog(yt, signed_in, anonymous=anonymous if signed_in else None)
 
     async def resolve(video_id: str) -> tuple[str, dict[str, str]]:
         raw = await asyncio.to_thread(
@@ -186,6 +188,7 @@ def doctor() -> None:
             resolve=resolve,
             signed_in=catalog.signed_in,
             library=catalog.liked_songs,
+            diagnose=lambda: account.diagnose(settings.data_dir, client),
         )
     )
     marks = {"ok": "\u2713", "warn": "!", "fail": "\u2717", "info": "-"}

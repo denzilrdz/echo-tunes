@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -103,6 +104,83 @@ def make_client(
             str(browser), language=language, location=location, requests_session=timeout_session()
         ), True
     return YTMusic(language=language, location=location, requests_session=timeout_session()), False
+
+
+def anonymous_client(language: str, location: str) -> Any:
+    """A YTMusic without any account: search, radio and browsing keep working with it when
+    YouTube Music rejects the signed-in one (see catalog.YTMusicCatalog)."""
+    from ytmusicapi import YTMusic
+
+    return YTMusic(language=language, location=location, requests_session=timeout_session())
+
+
+# --- why YouTube Music rejects a sign-in (for doctor) ---------------------------------------------
+TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 (a URL)
+CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels?part=id&mine=true"
+_ENABLE_URL = re.compile(
+    r"https://console\.(?:developers|cloud)\.google\.com/apis/api/youtube\.googleapis\.com/"
+    r"overview\?project=\d+"
+)
+ENABLE_API = (
+    "Enable the YouTube Data API v3 in the Google Cloud project of your OAuth client (APIs &"
+    " Services, Library, YouTube Data API v3, Enable), wait a few minutes, then restart echo-tunes"
+)
+
+
+async def diagnose(data_dir: Path, client: ClientSecrets | None, http: Any = None) -> str:
+    """Why YouTube Music may reject the saved sign-in, asked of Google's YouTube Data API with
+    the same token. Never returns or logs the token itself."""
+    import httpx
+
+    if signed_in_method(data_dir) == "browser":
+        return (
+            "The pasted browser headers were rejected; copy fresh ones (echo-tunes login --browser)"
+        )
+    try:
+        refresh = json.loads((data_dir / OAUTH_FILE).read_text())["refresh_token"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "The saved sign-in can't be read: sign in again (echo-tunes login)"
+    if client is None:
+        return "The OAuth client is missing: sign in again (echo-tunes login)"
+    own = http is None
+    http = http or httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0))
+    try:
+        token = await http.post(
+            TOKEN_URL,
+            data={
+                "client_id": client.client_id,
+                "client_secret": client.client_secret,
+                "refresh_token": refresh,
+                "grant_type": "refresh_token",
+            },
+        )
+        if token.status_code != 200:
+            return (
+                "Google no longer accepts this sign-in (revoked, or older than 7 days while the"
+                " app is in Testing mode): publish the app, then echo-tunes login"
+            )
+        access = token.json().get("access_token", "")
+        resp = await http.get(CHANNELS_URL, headers={"Authorization": f"Bearer {access}"})
+    except (httpx.HTTPError, ValueError) as exc:
+        return f"Couldn't ask Google about the sign-in ({type(exc).__name__}); try again"
+    finally:
+        if own:
+            await http.aclose()
+    text = resp.text
+    if resp.status_code == 403 and ("SERVICE_DISABLED" in text or "accessNotConfigured" in text):
+        link = _ENABLE_URL.search(text)
+        return ENABLE_API + (f": {link.group(0)}" if link else "")
+    if resp.status_code != 200:
+        return f"Google's YouTube API answered {resp.status_code}: sign in again (echo-tunes login)"
+    if not (resp.json().get("items") or []):
+        return (
+            "This Google account has no YouTube channel (often a brand account or a new account):"
+            " sign in again and pick the account that has your YouTube Music library"
+        )
+    return (
+        "Google accepts the sign-in but YouTube Music doesn't. Known for brand accounts and some"
+        " family-plan members: sign in with your main account, or use echo-tunes login --browser"
+    )
 
 
 # --- login flows (used by the CLI) ---------------------------------------------------------------
