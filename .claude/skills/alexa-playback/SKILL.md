@@ -54,6 +54,10 @@ instead of YouTube Music. Alexa often sends "X on YouTube" to plain `PlayIntent`
 `_youtube_query` strips a trailing "on/from/off YouTube" and switches the search too. After
 changing the voice model, users must paste it into the developer console (say so in CHANGELOG).
 
+Speech uses `Track.spoken`, which shortens titles (`catalog.spoken_title`: before the first "|",
+no "(Official Video)"-style tags or emoji; `spoken_artist` drops "VEVO"/"- Topic"). Never put the
+raw `title` in speech; the player and history keep the full one.
+
 ## Checklist for a playback change
 
 1. Write the test first in `tests/test_skill.py`, in the order the Echo sends events
