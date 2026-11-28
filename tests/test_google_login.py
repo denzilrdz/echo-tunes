@@ -140,19 +140,29 @@ async def test_refusals(google: FakeGoogle, answer: dict[str, Any], status: int)
     await g.aclose()
 
 
-async def test_pending_sign_ins_are_capped_and_cant_block_a_new_one(
+async def test_pending_sign_ins_are_capped_and_in_use_ones_are_never_pushed_out(
     google: FakeGoogle, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clock = [1000.0]
     monkeypatch.setattr(google_login.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(google_login, "MAX_STARTS", 100)  # tested on its own below
     g = google.login()
     mine = (await g.start())["flow"]
-    for _ in range(google_login.MAX_PENDING * 3):  # someone starts codes and walks away
-        clock[0] += 1
-        assert await g.poll(mine) is None  # the page that's open keeps checking
+    for _ in range(google_login.MAX_PENDING - 1):
         await g.start()
-    assert len(g) == google_login.MAX_PENDING  # never more
-    assert mine in g._flows  # the one being checked on was never pushed out
+    calls = len(google.device_calls)
+    with pytest.raises(GoogleLoginError) as full:  # all fresh: refused, Google not asked
+        await g.start()
+    assert full.value.status == 429 and len(google.device_calls) == calls
+    # Someone walks away from theirs; this page keeps checking on its own.
+    clock[0] += google_login.STALE_SECONDS + 1
+    assert await g.poll(mine) is None
+    for _ in range(google_login.MAX_PENDING - 1):
+        await g.start()  # each pushes out an abandoned one
+    assert mine in g._flows and len(g) == google_login.MAX_PENDING
+    with pytest.raises(GoogleLoginError):  # the rest are fresh now: refused
+        await g.start()
+    assert mine in g._flows
     # Abandoned sign-ins go after IDLE_SECONDS; the one still checked on stays.
     clock[0] += google_login.IDLE_SECONDS - 5
     assert await g.poll(mine) is None
@@ -164,6 +174,22 @@ async def test_pending_sign_ins_are_capped_and_cant_block_a_new_one(
     with pytest.raises(GoogleLoginError):
         await g.poll(mine)
     assert len(g) == 0
+    await g.aclose()
+
+
+async def test_starts_are_rate_limited(google: FakeGoogle, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(google_login.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(google_login, "MAX_PENDING", 100)  # room is never the limit here
+    g = google.login()
+    for _ in range(google_login.MAX_STARTS):
+        await g.start()
+    with pytest.raises(GoogleLoginError) as limited:
+        await g.start()
+    assert limited.value.status == 429 and "minute" in limited.value.message
+    assert len(google.device_calls) == google_login.MAX_STARTS
+    clock[0] += 60
+    await g.start()
     await g.aclose()
 
 

@@ -146,7 +146,7 @@ once you approve it, and the device stays signed in like it does with the passwo
   and keeps none of Google's tokens.
 - Only approve a code you started yourself: whoever started the sign-in gets the session (the
   page says so too). Each code expires after 10 minutes; a sign-in whose page was closed is
-  dropped after 45 seconds, and at most 8 wait at once (a new one pushes out the stalest).
+  dropped after 45 seconds. At most 8 wait at once and 10 can start a minute.
 - Google keeps at most 100 sign-in tokens per account for one OAuth client and drops the oldest
   beyond that, so after very many dashboard sign-ins with the account you use for YouTube
   Music, run `echo-tunes login` again if your library stops loading.

@@ -43,7 +43,7 @@ description: Security rules for echo-tunes. Use before merging anything that tou
       `openid email`, ID token from the token endpoint checked for issuer, audience, expiry,
       `email_verified` and the `DASHBOARD_GOOGLE_EMAILS` allowlist; then the same session as
       the password. Pending flows capped (`MAX_PENDING`) and expiring; the browser polls with
-      a 256-bit flow secret; no Google token is kept or revoked (revoking would end the YouTube
+      a 256-bit flow secret; starts are rate-limited (`MAX_STARTS`/min) and the cap is checked before calling Google; an in-use flow is never evicted; no Google token is kept or revoked (revoking would end the YouTube
       Music grant on the same client). `/api/login/options`, `/api/login/google[/poll]` are public.
       Monitors use `DASHBOARD_API_TOKEN` (Bearer, >= 32 chars, no gate); scripts may use Basic
       auth. Only `/login`, `/api/login*`, `/static/*`, `/assets/*` (the built app, no data),

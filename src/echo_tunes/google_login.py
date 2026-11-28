@@ -13,9 +13,11 @@ Core 3.1.3.7); its issuer, audience, expiry and verified email are. Only address
 revoked: revoking would also end the YouTube Music sign-in made with the same client.
 
 Pending sign-ins are capped (``MAX_PENDING``) and expire after ``FLOW_SECONDS``. One the
-browser stops checking on (the page was closed) is dropped after ``IDLE_SECONDS``, and when
-the cap is reached a new sign-in pushes out the one checked on least recently, so nobody can
-block Google sign-in by starting codes and walking away.
+browser stops checking on (the page was closed) is dropped after ``IDLE_SECONDS``; when the
+cap is reached a new sign-in may push out one that nobody has checked on for ``STALE_SECONDS``
+(an open page checks every few seconds), never one in use, else it's refused. Starts are
+limited to ``MAX_STARTS`` a minute in total, so unauthenticated callers can't make the server
+call Google without limit.
 
 Like every TV-style sign-in, approving a code someone else started signs *them* in; the page
 and docs say to only enter a code you started yourself.
@@ -29,6 +31,7 @@ import json
 import logging
 import secrets
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,6 +46,8 @@ ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
 MAX_PENDING = 8  # sign-ins waiting for approval at once
 FLOW_SECONDS = 600  # a code is good for this long here (Google allows longer)
 IDLE_SECONDS = 45.0  # a sign-in nobody has checked on for this long is dropped
+STALE_SECONDS = 15.0  # ... and when the table is full, one unchecked this long may be pushed out
+MAX_STARTS = 10  # sign-ins started per minute, in total
 CLOCK_SKEW = 300  # seconds of leeway on the token's expiry
 
 
@@ -75,10 +80,17 @@ class GoogleLogin:
         self._emails = frozenset(e.lower() for e in emails)
         self._http = http or httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=5.0))
         self._flows: dict[str, _Flow] = {}
+        self._starts: deque[float] = deque(maxlen=MAX_STARTS)
 
     async def start(self) -> dict[str, Any]:
         """Ask Google for a code to show. ``flow`` is the secret the browser polls with."""
         self._prune()
+        now = time.monotonic()
+        if len(self._starts) == MAX_STARTS and now - self._starts[0] < 60:
+            raise GoogleLoginError(429, "Too many Google sign-ins started; try again in a minute.")
+        if not self._make_room(now):
+            raise GoogleLoginError(429, "Too many Google sign-ins waiting; try again shortly.")
+        self._starts.append(now)
         data = await self._post(DEVICE_CODE_URL, {"client_id": self._id, "scope": SCOPE})
         code, device_code = data.get("user_code"), data.get("device_code")
         if not isinstance(code, str) or not isinstance(device_code, str):
@@ -91,8 +103,8 @@ class GoogleLogin:
         lifetime = min(float(data.get("expires_in") or FLOW_SECONDS), FLOW_SECONDS)
         now = time.monotonic()
         self._prune()
-        while len(self._flows) >= MAX_PENDING:  # push out the one checked on least recently
-            del self._flows[min(self._flows, key=lambda k: self._flows[k].seen)]
+        if not self._make_room(now):  # others started while Google answered
+            raise GoogleLoginError(429, "Too many Google sign-ins waiting; try again shortly.")
         flow = secrets.token_urlsafe(32)
         self._flows[flow] = _Flow(device_code, interval, now + lifetime, now + interval, now)
         return {
@@ -178,6 +190,16 @@ class GoogleLogin:
         if not isinstance(data, dict):
             raise GoogleLoginError(502, "Google's answer couldn't be read. Try again.")
         return data
+
+    def _make_room(self, now: float) -> bool:
+        """Free a place if the table is full, pushing out only a sign-in nobody checks on."""
+        if len(self._flows) < MAX_PENDING:
+            return True
+        stalest = min(self._flows, key=lambda k: self._flows[k].seen)
+        if now - self._flows[stalest].seen < STALE_SECONDS:
+            return False  # every one is in use
+        del self._flows[stalest]
+        return True
 
     def _prune(self) -> None:
         now = time.monotonic()
